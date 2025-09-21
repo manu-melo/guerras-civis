@@ -5,7 +5,14 @@ import { useMachine } from "@xstate/react";
 import { useEffect } from "react";
 import { gameMachine } from "@/lib/gameMachine";
 import { useGameStorage } from "./useLocalStorage";
-import { GameState } from "@/types/game";
+
+interface StoredGameState {
+  context: {
+    hostNick: string;
+    players: unknown[];
+    gameStarted: boolean;
+  };
+}
 
 export function useGameState() {
   const [state, send] = useMachine(gameMachine);
@@ -28,12 +35,12 @@ export function useGameState() {
 
   // Função para restaurar jogo salvo
   const restoreGame = () => {
-    if (storedState && storedState.context) {
+    if (storedState && (storedState as unknown as StoredGameState).context) {
       // Enviar eventos para restaurar o estado
       send({
         type: "START_GAME",
-        hostNick: storedState.context.hostNick,
-        players: storedState.context.players,
+        hostNick: (storedState as unknown as StoredGameState).context.hostNick,
+        players: (storedState as unknown as StoredGameState).context.players,
       });
 
       // Adicionar lógica adicional para restaurar o estado completo
@@ -96,7 +103,7 @@ export function useGameState() {
           } else {
             reject(new Error("Arquivo não contém dados válidos de jogo"));
           }
-        } catch (error) {
+        } catch (_error) {
           reject(new Error("Erro ao processar arquivo JSON"));
         }
       };
@@ -131,7 +138,10 @@ export function useGameState() {
 
   // Função para verificar se jogo pode ser restaurado
   const canRestoreGame = () => {
-    return hasStoredGame() && storedState?.context?.gameStarted;
+    return (
+      hasStoredGame() &&
+      (storedState as unknown as StoredGameState)?.context?.gameStarted
+    );
   };
 
   return {

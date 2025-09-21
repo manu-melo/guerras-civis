@@ -4,10 +4,9 @@
 import { useState, useEffect } from "react";
 import { useMachine } from "@xstate/react";
 import { gameMachine } from "@/lib/gameMachine";
-import { Player, Action, Role, ActionType } from "@/types/game";
+import { Player, Action, ActionType } from "@/types/game";
 import {
   createPlayer,
-  assignRoles,
   processJokerDice,
   getRoleAction,
   checkWinConditions,
@@ -34,8 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Users, Eye, UserX, StopCircle, CheckCircle } from "lucide-react";
+import { Eye, UserX, StopCircle, CheckCircle } from "lucide-react";
 
 export function GameBoard() {
   const [state, send] = useMachine(gameMachine);
@@ -211,17 +209,6 @@ export function GameBoard() {
   const startDiceInput = (action: Action) => {
     setCurrentDiceAction(action);
     setDiceValue(1);
-  };
-
-  const enablePiP = async () => {
-    try {
-      if ("pictureInPicture" in document) {
-        // Implementação básica do PiP
-        send({ type: "ENABLE_PIP" });
-      }
-    } catch (error) {
-      console.error("PiP não suportado:", error);
-    }
   };
 
   const getPhaseText = () => {
@@ -587,9 +574,11 @@ export function GameBoard() {
                           {action.status === "ANULLED" && (
                             <div className="text-red-600 ml-2 mt-1 text-xs">
                               (ANULADA:{" "}
-                              {action.meta?.reason || "Motivo não especificado"}
+                              {(action.meta as { reason?: string })?.reason ||
+                                "Motivo não especificado"}
                               )
-                              {action.meta?.reflectedTo && (
+                              {(action.meta as { reflectedTo?: string })
+                                ?.reflectedTo && (
                                 <div className="text-orange-600 font-semibold">
                                   ⚡ Ação refletida de volta para {actor?.nick}!
                                 </div>

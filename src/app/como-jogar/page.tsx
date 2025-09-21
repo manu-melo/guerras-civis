@@ -94,14 +94,16 @@ export default function ComoJogarPage() {
             <div className="bg-muted/30 p-4 rounded-lg">
               <h4 className="font-semibold mb-2">Fluxo do jogo:</h4>
               <ol className="list-decimal list-inside space-y-2 text-sm">
-                <li>Host acessa o site e clica em "Iniciar Partida"</li>
+                <li>
+                  Host acessa o site e clica em &ldquo;Iniciar Partida&rdquo;
+                </li>
                 <li>
                   Sistema pede autorização para Picture-in-Picture (opcional)
                 </li>
                 <li>
                   Host adiciona seu nick e os jogadores (12, 14, 16 ou 18)
                 </li>
-                <li>Clica em "Guerrear" para iniciar a partida</li>
+                <li>Clica em &ldquo;Guerrear&rdquo; para iniciar a partida</li>
                 <li>Sistema sorteia cargos automaticamente</li>
                 <li>
                   Se houver Coringa, sistema pede o resultado do dado (1-5)

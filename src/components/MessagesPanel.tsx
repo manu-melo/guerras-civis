@@ -1,7 +1,6 @@
 // src/components/MessagesPanel.tsx
 "use client";
 
-import { useState } from "react";
 import { Message, MessageLevel } from "@/types/game";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,8 +16,6 @@ export function MessagesPanel({
   messages,
   onClearMessages,
 }: MessagesPanelProps) {
-  const [autoScroll, setAutoScroll] = useState(true);
-
   const getMessageColor = (level: MessageLevel): string => {
     switch (level) {
       case "ACTION_VALID":

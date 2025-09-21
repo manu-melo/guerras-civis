@@ -13,13 +13,13 @@ import {
   processJokerDice,
   processNight,
   processDiceAction,
-  getPendingDiceActions,
   processVotingResult,
   checkWinConditions,
 } from "@/lib/gameEngine";
 import { v4 as uuidv4 } from "uuid";
 
-export interface GameContext extends GameState {}
+// Type alias for game context
+export type GameContext = GameState;
 
 export type GameEvent =
   | { type: "START_GAME"; hostNick: string; players: Player[] }
@@ -33,7 +33,7 @@ export type GameEvent =
   | { type: "START_VOTING" }
   | { type: "REGISTER_VOTE"; playerId: string; targetId: string; votes: number }
   | { type: "END_VOTING" }
-  | { type: "PROCESS_VOTING_RESULT"; result: any }
+  | { type: "PROCESS_VOTING_RESULT"; result: Record<string, unknown> }
   | { type: "GO_TO_NEXT_NIGHT" }
   | { type: "ELIMINATE_PLAYER"; playerId: string; reason?: string }
   | { type: "END_GAME"; winningTeam?: Team }
@@ -225,7 +225,7 @@ export const gameMachine = createMachine(
               (p) => p.team === "CIVIL"
             ).length;
             return Math.round((civilCount / playersWithRoles.length) * 100);
-          } catch (error) {
+          } catch (_error) {
             return 50;
           }
         },
@@ -236,7 +236,7 @@ export const gameMachine = createMachine(
               (p) => p.team === "MAFIA"
             ).length;
             return Math.round((mafiaCount / playersWithRoles.length) * 100);
-          } catch (error) {
+          } catch (_error) {
             return 50;
           }
         },

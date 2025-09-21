@@ -1,7 +1,7 @@
 // src/hooks/useLocalStorage.ts
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 
 export function useLocalStorage<T>(key: string, initialValue: T) {
   // State para armazenar nosso valor
@@ -48,12 +48,12 @@ export function useLocalStorage<T>(key: string, initialValue: T) {
 
 // Hook específico para o estado do jogo
 export function useGameStorage() {
-  const [gameState, setGameState] = useLocalStorage<any>(
-    "guerras-civis-game-state",
-    null
-  );
+  const [gameState, setGameState] = useLocalStorage<Record<
+    string,
+    unknown
+  > | null>("guerras-civis-game-state", null);
 
-  const saveGameState = (state: any) => {
+  const saveGameState = (state: Record<string, unknown>) => {
     const stateToSave = {
       ...state,
       savedAt: new Date().toISOString(),

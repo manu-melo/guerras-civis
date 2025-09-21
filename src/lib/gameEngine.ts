@@ -6,7 +6,6 @@ import {
   Action,
   Message,
   VoteResult,
-  ActionStatus,
   ActionType,
   CIVIL_ROLES,
   MAFIA_ROLES,
@@ -45,7 +44,6 @@ export function assignRoles(players: Player[]): Player[] {
 
   const halfCount = players.length / 2;
   const civilCount = halfCount;
-  const mafiaCount = halfCount;
 
   // Embaralhar jogadores
   const shuffledPlayers = [...players].sort(() => Math.random() - 0.5);
@@ -279,7 +277,7 @@ function processAction(
 } {
   const messages: Message[] = [];
   let updatedPlayers = [...players];
-  let processedAction = { ...action };
+  const processedAction = { ...action };
 
   const actor = players.find((p) => p.id === action.actorId);
   const target = players.find((p) => p.id === action.targetId);
@@ -541,7 +539,7 @@ function isHostileAction(actionType: ActionType): boolean {
 export function eliminatePlayer(
   players: Player[],
   playerId: string,
-  reason: string
+  _reason: string
 ): Player[] {
   return players.map((player) =>
     player.id === playerId ? { ...player, alive: false } : player
@@ -555,7 +553,10 @@ export function processSpecialElimination(
   players: Player[],
   eliminatedPlayer: Player,
   reason: string,
-  meta?: any
+  meta?: {
+    explosionTargets?: string[];
+    revengeTargetId?: string;
+  }
 ): { updatedPlayers: Player[]; messages: Message[] } {
   let updatedPlayers = [...players];
   const messages: Message[] = [];
@@ -644,8 +645,6 @@ export function tallyVotes(
   votes: Record<string, number>,
   players: Player[]
 ): VoteResult {
-  const alivePlayers = players.filter((p) => p.alive);
-
   if (Object.keys(votes).length === 0) {
     return { outcome: "NONE", players: [] };
   }
@@ -653,8 +652,8 @@ export function tallyVotes(
   // Encontrar maior número de votos
   const maxVotes = Math.max(...Object.values(votes));
   const playersWithMaxVotes = Object.entries(votes)
-    .filter(([_, voteCount]) => voteCount === maxVotes)
-    .map(([playerId, _]) => players.find((p) => p.id === playerId)!)
+    .filter(([_playerId, voteCount]) => voteCount === maxVotes)
+    .map(([playerId, _voteCount]) => players.find((p) => p.id === playerId)!)
     .filter(Boolean);
 
   if (playersWithMaxVotes.length === 1) {
@@ -759,17 +758,17 @@ export function checkWinConditions(players: Player[]): {
 /**
  * Exporta estado do jogo
  */
-export function exportGameState(gameState: any): string {
+export function exportGameState(gameState: Record<string, unknown>): string {
   return JSON.stringify(gameState, null, 2);
 }
 
 /**
  * Importa estado do jogo
  */
-export function importGameState(jsonString: string): any {
+export function importGameState(jsonString: string): Record<string, unknown> {
   try {
     return JSON.parse(jsonString);
-  } catch (error) {
+  } catch (_error) {
     throw new Error("Formato JSON inválido");
   }
 }

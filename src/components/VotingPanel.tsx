@@ -35,7 +35,6 @@ export function VotingPanel({
 
   const handleVoteChange = (playerId: string, change: number) => {
     const currentLocal = localVotes[playerId] || 0;
-    const currentGlobal = votes[playerId] || 0;
     const newValue = Math.max(0, currentLocal + change);
 
     // Verificar se não excede o limite total
@@ -103,7 +102,6 @@ export function VotingPanel({
           {players.map((player) => {
             const totalVotes = getTotalVotesForPlayer(player.id);
             const localVoteCount = localVotes[player.id] || 0;
-            const registeredVotes = votes[player.id] || 0;
 
             return (
               <div
@@ -170,7 +168,7 @@ export function VotingPanel({
           <h4 className="font-medium mb-2">Resultado Atual:</h4>
           <div className="space-y-1">
             {Object.entries(votes)
-              .filter(([_, voteCount]) => voteCount > 0)
+              .filter(([_playerId, voteCount]) => voteCount > 0)
               .sort(([, a], [, b]) => b - a)
               .map(([playerId, voteCount]) => {
                 const player = players.find((p) => p.id === playerId);

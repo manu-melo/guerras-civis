@@ -138,8 +138,8 @@ export const ROLES_DATA: Record<Role, RoleData> = {
 // Função para obter cargos por time
 export function getRolesByTeam(team: Team): Role[] {
   return Object.entries(ROLES_DATA)
-    .filter(([_, data]) => data.team === team)
-    .map(([role, _]) => role as Role);
+    .filter(([_role, data]) => data.team === team)
+    .map(([role, _data]) => role as Role);
 }
 
 // Função para verificar se cargo tem ação noturna

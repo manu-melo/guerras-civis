@@ -32,7 +32,7 @@ export interface Player {
   team?: Team;
   votes?: number;
   originalRole?: Role; // Para Demônio e Coringa
-  meta?: Record<string, any>; // Para dados extras como envenenamento, poderes herdados, etc.
+  meta?: Record<string, unknown>; // Para dados extras como envenenamento, poderes herdados, etc.
 }
 
 export type ActionStatus = "VALID" | "ANULLED" | "NEUTRAL";
@@ -60,7 +60,7 @@ export interface Action {
   type: ActionType;
   timestamp: number;
   status: ActionStatus;
-  meta?: Record<string, any>; // ex: dieValue, reason, eliminatedPlayers
+  meta?: Record<string, unknown>; // ex: dieValue, reason, eliminatedPlayers
   order: number; // ordem de submissão
 }
 
@@ -76,7 +76,7 @@ export interface Message {
   createdAt: number;
   level: MessageLevel;
   text: string;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 export type GamePhase =
