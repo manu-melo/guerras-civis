@@ -1,0 +1,26 @@
+{
+  "name": "Guerras Civis - Jogo de Estratégia",
+  "short_name": "Guerras Civis",
+  "description": "O jogo de estratégia e dedução mais emocionante. Civis contra Máfia em uma batalha épica pela sobrevivência.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#1a1a1a",
+  "theme_color": "#1a1a1a",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/guerras-civis.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable any"
+    },
+    {
+      "src": "/guerras-civis.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable any"
+    }
+  ],
+  "categories": ["games", "entertainment"],
+  "lang": "pt-BR"
+}
