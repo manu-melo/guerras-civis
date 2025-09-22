@@ -39,7 +39,7 @@ export function PlayersList({
   const deadPlayers = players.filter((p) => !p.alive);
 
   const handleAddPlayer = () => {
-    if (newPlayerNick.trim() && !gameStarted) {
+    if (newPlayerNick.trim() && !gameStarted && players.length < 18) {
       onAddPlayer(newPlayerNick.trim());
       setNewPlayerNick("");
     }
@@ -128,7 +128,7 @@ export function PlayersList({
               />
               <Button
                 onClick={handleAddPlayer}
-                disabled={!newPlayerNick.trim()}
+                disabled={!newPlayerNick.trim() || players.length >= 18}
                 size="sm"
               >
                 <Plus className="h-4 w-4" />
@@ -136,6 +136,9 @@ export function PlayersList({
             </div>
             <p className="text-xs text-muted-foreground">
               Jogadores válidos: 12, 14, 16 ou 18. Atual: {players.length}
+              {players.length >= 18 && (
+                <span className="text-red-500 ml-2">(Máximo atingido)</span>
+              )}
             </p>
           </div>
         )}

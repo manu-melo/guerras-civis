@@ -85,6 +85,8 @@ export type GamePhase =
   | "EVENTS"
   | "DAY"
   | "VOTING"
+  | "TIE_BREAKER"
+  | "SPIRIT_REVENGE"
   | "GAME_OVER";
 
 export interface GameState {
@@ -101,6 +103,8 @@ export interface GameState {
   civilPercentage: number;
   mafiaPercentage: number;
   isPiPEnabled: boolean;
+  tiedPlayers?: Player[]; // Para resolver empates
+  eliminatedSpiritPlayer?: Player; // Para vingança do Espírito Vingativo
 }
 
 export interface VoteResult {

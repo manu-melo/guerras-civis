@@ -797,7 +797,7 @@ function createActionMessage(
       actorInfo = `${action.actorRole} (${actor.nick})`;
     }
     if (target) {
-      targetInfo = `${target.nick}`;
+      targetInfo = `${target.nick} (${action.targetRole})`;
     }
   }
 
@@ -807,10 +807,20 @@ function createActionMessage(
     text = `[${timestamp}] AÇÃO ANULADA — ${actorInfo} → ${targetInfo} — Motivo: ${
       action.meta?.reason || "Desconhecido"
     }`;
+
+    // Informações especiais para ações refletidas
+    if (action.meta?.reflectedTo) {
+      text += ` — Ação refletida de volta!`;
+    }
   } else {
     text = `[${timestamp}] AÇÃO EXECUTADA — ${actorInfo} → ${getActionName(
       action.type
     )} → ${targetInfo}`;
+
+    // Destacar quando há ação contra Policial
+    if (action.targetRole === "Policial") {
+      text += ` ⚠️ [ALERTA: AÇÃO CONTRA POLICIAL]`;
+    }
   }
 
   return {

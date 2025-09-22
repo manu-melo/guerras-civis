@@ -13,6 +13,7 @@ interface VotingPanelProps {
   votes: Record<string, number>;
   onVote: (targetId: string, votes: number) => void;
   onEndVoting: () => void;
+  tiedPlayers?: Player[]; // Para votação de desempate
 }
 
 export function VotingPanel({
@@ -20,8 +21,14 @@ export function VotingPanel({
   votes,
   onVote,
   onEndVoting,
+  tiedPlayers,
 }: VotingPanelProps) {
   const [localVotes, setLocalVotes] = useState<Record<string, number>>({});
+
+  // Se há jogadores empatados, usar apenas eles. Senão, usar todos
+  const votingPlayers =
+    tiedPlayers && tiedPlayers.length > 0 ? tiedPlayers : players;
+  const isTieBreaker = tiedPlayers && tiedPlayers.length > 0;
 
   // Calcular total de votos já registrados
   const totalVotesRegistered = Object.values(votes).reduce(
@@ -76,7 +83,14 @@ export function VotingPanel({
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>Votação</span>
+          <span>
+            {isTieBreaker ? "Votação de Desempate" : "Votação"}
+            {isTieBreaker && (
+              <span className="text-sm text-yellow-600 dark:text-yellow-400 ml-2">
+                (apenas jogadores empatados)
+              </span>
+            )}
+          </span>
           <div className="flex items-center gap-2">
             <Badge variant="outline">
               Votos: {currentTotalVotes}/{maxPossibleVotes}
@@ -99,7 +113,7 @@ export function VotingPanel({
         </div>
 
         <div className="grid gap-3">
-          {players.map((player) => {
+          {votingPlayers.map((player) => {
             const totalVotes = getTotalVotesForPlayer(player.id);
             const localVoteCount = localVotes[player.id] || 0;
 

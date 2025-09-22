@@ -22,9 +22,17 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PlayersList } from "./PlayersList";
 import { MessagesPanel } from "./MessagesPanel";
 import { VotingPanel } from "./VotingPanel";
+import { TieBreaker } from "./TieBreaker";
+import { SpiritRevenge } from "./SpiritRevenge";
 import {
   Select,
   SelectContent,
@@ -33,7 +41,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Eye, UserX, StopCircle, CheckCircle } from "lucide-react";
+import { Eye, UserX, StopCircle, CheckCircle, Menu } from "lucide-react";
 
 export function GameBoard() {
   const [state, send] = useMachine(gameMachine);
@@ -56,6 +64,8 @@ export function GameBoard() {
   const isEventsPhase = state.matches("events");
   const isDayPhase = state.matches("day");
   const isVotingPhase = state.matches("voting");
+  const isTieBreaker = state.matches("tieBreaker");
+  const isSpiritRevenge = state.matches("spiritRevenge");
   const isGameOver = state.matches("gameOver");
   const needsJokerDice = state.matches("jokerDice");
 
@@ -222,6 +232,10 @@ export function GameBoard() {
         return `DURANTE O DIA ${round}`;
       case "voting":
         return `VOTAÇÃO DO DIA ${round}`;
+      case "tieBreaker":
+        return `EMPATE NA VOTAÇÃO - DIA ${round}`;
+      case "spiritRevenge":
+        return `VINGANÇA DO ESPÍRITO - DIA ${round}`;
       default:
         return "";
     }
@@ -320,7 +334,8 @@ export function GameBoard() {
                   </div>
                 </div>
 
-                <div className="flex gap-2">
+                {/* Botões - Desktop (telas grandes) */}
+                <div className="hidden lg:flex gap-2">
                   <Dialog
                     open={showRolesModal}
                     onOpenChange={setShowRolesModal}
@@ -331,11 +346,11 @@ export function GameBoard() {
                         Cargos
                       </Button>
                     </DialogTrigger>
-                    <DialogContent className="max-h-[80vh] overflow-y-auto">
+                    <DialogContent className="max-h-[90vh] max-w-[95vw] sm:max-w-md overflow-y-auto">
                       <DialogHeader>
                         <DialogTitle>Cargos dos Jogadores</DialogTitle>
                       </DialogHeader>
-                      <div className="overflow-y-auto max-h-[60vh]">
+                      <div className="overflow-y-auto max-h-[70vh]">
                         <PlayersList
                           hostNick={hostNick}
                           players={players}
@@ -356,7 +371,7 @@ export function GameBoard() {
                         Eliminar agora
                       </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-w-[95vw] sm:max-w-md">
                       <DialogHeader>
                         <DialogTitle>Eliminar Jogador</DialogTitle>
                       </DialogHeader>
@@ -426,6 +441,129 @@ export function GameBoard() {
                     <CheckCircle className="h-4 w-4 mr-1" />
                     Verificar vencedor
                   </Button>
+                </div>
+
+                {/* Menu Dropdown - Mobile e Tablet (telas médias e pequenas) */}
+                <div className="lg:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="sm">
+                        <Menu className="h-4 w-4 mr-1" />
+                        Menu
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <Dialog
+                        open={showRolesModal}
+                        onOpenChange={setShowRolesModal}
+                      >
+                        <DialogTrigger asChild>
+                          <DropdownMenuItem
+                            onSelect={(e) => e.preventDefault()}
+                            className="cursor-pointer"
+                          >
+                            <Eye className="h-4 w-4 mr-2" />
+                            Cargos
+                          </DropdownMenuItem>
+                        </DialogTrigger>
+                        <DialogContent className="max-h-[90vh] max-w-[95vw] sm:max-w-md overflow-y-auto">
+                          <DialogHeader>
+                            <DialogTitle>Cargos dos Jogadores</DialogTitle>
+                          </DialogHeader>
+                          <div className="overflow-y-auto max-h-[70vh]">
+                            <PlayersList
+                              hostNick={hostNick}
+                              players={players}
+                              onHostNickChange={() => {}}
+                              onAddPlayer={() => {}}
+                              onRemovePlayer={() => {}}
+                              gameStarted={true}
+                              showRoles={true}
+                            />
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <DropdownMenuItem
+                            onSelect={(e) => e.preventDefault()}
+                            className="cursor-pointer"
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            Eliminar agora
+                          </DropdownMenuItem>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[95vw] sm:max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>Eliminar Jogador</DialogTitle>
+                          </DialogHeader>
+                          <div className="space-y-4">
+                            <Select
+                              value={eliminatePlayerId}
+                              onValueChange={setEliminatePlayerId}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Selecionar jogador..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {alivePlayers.map((player) => (
+                                  <SelectItem key={player.id} value={player.id}>
+                                    {player.nick} ({player.role})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Button
+                              onClick={handleEliminateNow}
+                              disabled={!eliminatePlayerId}
+                              variant="destructive"
+                              className="w-full"
+                            >
+                              Confirmar Eliminação
+                            </Button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
+
+                      <DropdownMenuItem
+                        onClick={() => send({ type: "END_GAME" })}
+                        className="cursor-pointer text-red-600 focus:text-red-600"
+                      >
+                        <StopCircle className="h-4 w-4 mr-2" />
+                        Encerrar agora
+                      </DropdownMenuItem>
+
+                      <DropdownMenuItem
+                        onClick={() => {
+                          // Verificar vencedor usando função correta
+                          const winCondition = checkWinConditions(players);
+
+                          if (winCondition.gameOver) {
+                            send({
+                              type: "END_GAME",
+                              winningTeam: winCondition.winningTeam,
+                            });
+
+                            // Adicionar mensagem explicativa
+                            send({
+                              type: "ADD_MESSAGE",
+                              message: {
+                                level: "INFO",
+                                text: `JOGO ENCERRADO: ${winCondition.reason}`,
+                              },
+                            });
+                          } else {
+                            alert(winCondition.reason);
+                          }
+                        }}
+                        className="cursor-pointer text-green-600 focus:text-green-600"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Verificar vencedor
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
             </CardHeader>
@@ -720,6 +858,7 @@ export function GameBoard() {
             <VotingPanel
               players={alivePlayers}
               votes={state.context.votes}
+              tiedPlayers={state.context.tiedPlayers}
               onVote={(targetId: string, votes: number) => {
                 send({
                   type: "REGISTER_VOTE",
@@ -729,6 +868,26 @@ export function GameBoard() {
                 });
               }}
               onEndVoting={() => send({ type: "END_VOTING" })}
+            />
+          )}
+
+          {/* Tie Breaker */}
+          {isTieBreaker && (
+            <TieBreaker
+              tiedPlayers={state.context.tiedPlayers || []}
+              onRepeatVoting={() => send({ type: "REPEAT_VOTING" })}
+              onContinueToNight={() => send({ type: "CONTINUE_TO_NIGHT" })}
+            />
+          )}
+
+          {/* Spirit Revenge */}
+          {isSpiritRevenge && state.context.eliminatedSpiritPlayer && (
+            <SpiritRevenge
+              eliminatedSpirit={state.context.eliminatedSpiritPlayer}
+              alivePlayers={alivePlayers}
+              onProcessRevenge={(targetId: string) =>
+                send({ type: "PROCESS_SPIRIT_REVENGE", targetId })
+              }
             />
           )}
 

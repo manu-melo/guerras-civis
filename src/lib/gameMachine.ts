@@ -33,9 +33,12 @@ export type GameEvent =
   | { type: "START_VOTING" }
   | { type: "REGISTER_VOTE"; playerId: string; targetId: string; votes: number }
   | { type: "END_VOTING" }
+  | { type: "REPEAT_VOTING" }
+  | { type: "CONTINUE_TO_NIGHT" }
   | { type: "PROCESS_VOTING_RESULT"; result: Record<string, unknown> }
   | { type: "GO_TO_NEXT_NIGHT" }
   | { type: "ELIMINATE_PLAYER"; playerId: string; reason?: string }
+  | { type: "PROCESS_SPIRIT_REVENGE"; targetId: string }
   | { type: "END_GAME"; winningTeam?: Team }
   | { type: "RESET_GAME" }
   | { type: "ENABLE_PIP" }
@@ -54,6 +57,8 @@ const createInitialContext = (): GameContext => ({
   civilPercentage: 50,
   mafiaPercentage: 50,
   isPiPEnabled: false,
+  tiedPlayers: [],
+  eliminatedSpiritPlayer: undefined,
 });
 
 export const gameMachine = createMachine(
@@ -167,10 +172,51 @@ export const gameMachine = createMachine(
               actions: ["processElimination"],
             },
             {
+              target: "tieBreaker",
+              guard: "hasVotingTie",
+              actions: ["checkVotingTie"],
+            },
+            {
+              target: "spiritRevenge",
+              guard: "eliminatedSpiritVingativo",
+              actions: ["processEliminationWithSpirit"],
+            },
+            {
               target: "night",
               actions: ["processElimination", "incrementRound"],
             },
           ],
+        },
+      },
+
+      tieBreaker: {
+        entry: assign({
+          phase: () => "TIE_BREAKER" as GamePhase,
+        }),
+        on: {
+          REPEAT_VOTING: {
+            target: "voting",
+            actions: assign({
+              votes: () => ({}),
+              tiedPlayers: ({ context }) => context.tiedPlayers || [],
+            }),
+          },
+          CONTINUE_TO_NIGHT: {
+            target: "night",
+            actions: ["incrementRound", "addNoEliminationMessage"],
+          },
+        },
+      },
+
+      spiritRevenge: {
+        entry: assign({
+          phase: () => "SPIRIT_REVENGE" as GamePhase,
+        }),
+        on: {
+          PROCESS_SPIRIT_REVENGE: {
+            target: "night",
+            actions: ["processSpiritRevenge", "incrementRound"],
+          },
         },
       },
 
@@ -475,6 +521,125 @@ export const gameMachine = createMachine(
           return [...context.messages, newMessage];
         },
       }),
+
+      checkVotingTie: assign({
+        tiedPlayers: ({ context }) => {
+          try {
+            const { isTie, tiedPlayers } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return isTie ? tiedPlayers : [];
+          } catch (error) {
+            console.error("Erro ao verificar empate:", error);
+            return [];
+          }
+        },
+        messages: ({ context }) => {
+          try {
+            const { messages } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return [...context.messages, ...messages];
+          } catch (error) {
+            console.error("Erro ao processar mensagens de empate:", error);
+            return context.messages;
+          }
+        },
+      }),
+
+      addNoEliminationMessage: assign({
+        messages: ({ context }) => {
+          const newMessage: Message = {
+            id: uuidv4(),
+            createdAt: Date.now(),
+            level: "INFO",
+            text: "[VOTAÇÃO] Host escolheu continuar para próxima noite sem eliminação.",
+          };
+          return [...context.messages, newMessage];
+        },
+      }),
+
+      processSpiritRevenge: assign({
+        players: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_SPIRIT_REVENGE" ||
+            !context.eliminatedSpiritPlayer
+          )
+            return context.players;
+
+          // Eliminar o jogador escolhido para vingança
+          const updatedPlayers = context.players.map((player) =>
+            player.id === event.targetId ? { ...player, alive: false } : player
+          );
+
+          return updatedPlayers;
+        },
+        messages: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_SPIRIT_REVENGE" ||
+            !context.eliminatedSpiritPlayer
+          )
+            return context.messages;
+
+          const victim = context.players.find((p) => p.id === event.targetId);
+          if (!victim) return context.messages;
+
+          const newMessage: Message = {
+            id: uuidv4(),
+            createdAt: Date.now(),
+            level: "ELIMINATION",
+            text: `🔮 VINGANÇA — ${victim.nick} (${victim.role}) foi eliminado pela vingança de ${context.eliminatedSpiritPlayer.nick}`,
+          };
+
+          return [...context.messages, newMessage];
+        },
+        eliminatedSpiritPlayer: () => undefined, // Limpar após processar
+      }),
+
+      processEliminationWithSpirit: assign({
+        players: ({ context }) => {
+          try {
+            const { updatedPlayers } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return updatedPlayers;
+          } catch (error) {
+            console.error("Erro ao processar eliminação:", error);
+            return context.players;
+          }
+        },
+        eliminatedSpiritPlayer: ({ context }) => {
+          try {
+            const { eliminatedPlayer } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return eliminatedPlayer &&
+              eliminatedPlayer.role === "Espírito Vingativo"
+              ? eliminatedPlayer
+              : undefined;
+          } catch (error) {
+            console.error("Erro ao identificar Espírito Vingativo:", error);
+            return undefined;
+          }
+        },
+        messages: ({ context }) => {
+          try {
+            const { messages } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return [...context.messages, ...messages];
+          } catch (error) {
+            console.error("Erro ao processar mensagens de eliminação:", error);
+            return context.messages;
+          }
+        },
+        votes: () => ({}), // Limpar votos após processamento
+      }),
     },
 
     guards: {
@@ -515,6 +680,29 @@ export const gameMachine = createMachine(
           return winConditions.gameOver;
         } catch (error) {
           console.error("Erro ao verificar fim do jogo após votação:", error);
+          return false;
+        }
+      },
+
+      hasVotingTie: ({ context }) => {
+        try {
+          const { isTie } = processVotingResult(context.players, context.votes);
+          return isTie;
+        } catch (error) {
+          console.error("Erro ao verificar empate:", error);
+          return false;
+        }
+      },
+
+      eliminatedSpiritVingativo: ({ context }) => {
+        try {
+          const { eliminatedPlayer, isTie } = processVotingResult(
+            context.players,
+            context.votes
+          );
+          return !isTie && eliminatedPlayer?.role === "Espírito Vingativo";
+        } catch (error) {
+          console.error("Erro ao verificar Espírito Vingativo:", error);
           return false;
         }
       },
