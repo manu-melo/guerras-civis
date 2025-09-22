@@ -30,7 +30,7 @@ export const metadata: Metadata = {
   authors: [{ name: "Guerras Civis Team" }],
   creator: "Guerras Civis",
   publisher: "Guerras Civis",
-  metadataBase: new URL('https://guerras-civis.vercel.app'),
+  metadataBase: new URL("https://guerras-civis.vercel.app"),
   icons: {
     icon: [
       { url: "/guerras-civis.png", sizes: "32x32", type: "image/png" },
@@ -89,7 +89,10 @@ export default function RootLayout({
         <link rel="manifest" href="/manifest.json" />
         <meta name="theme-color" content="#1a1a1a" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta
+          name="apple-mobile-web-app-status-bar-style"
+          content="black-translucent"
+        />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background`}
