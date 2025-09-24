@@ -945,7 +945,7 @@ export function getRoleAction(roleOrPlayer: Role | Player): ActionType | null {
   };
 
   // Se é um Player, verificar se é Coringa transformado
-  if (typeof roleOrPlayer === 'object' && 'id' in roleOrPlayer) {
+  if (typeof roleOrPlayer === "object" && "id" in roleOrPlayer) {
     const player = roleOrPlayer as Player;
     // Se é um Coringa que já foi transformado, usar o cargo atual
     if (player.originalRole === "Coringa" && player.role) {
@@ -954,7 +954,7 @@ export function getRoleAction(roleOrPlayer: Role | Player): ActionType | null {
     // Caso contrário, usar o cargo atual normalmente
     return player.role ? roleActions[player.role] || null : null;
   }
-  
+
   // Se é apenas um Role, usar normalmente (Coringa sem dado ainda não tem ação)
   const role = roleOrPlayer as Role;
   return roleActions[role] || null;
@@ -969,7 +969,7 @@ export function roleHasNightAction(role: Role): boolean;
 export function roleHasNightAction(player: Player): boolean;
 export function roleHasNightAction(roleOrPlayer: Role | Player): boolean {
   // Type guard para distinguir entre Player e Role
-  if (typeof roleOrPlayer === 'object' && 'id' in roleOrPlayer) {
+  if (typeof roleOrPlayer === "object" && "id" in roleOrPlayer) {
     return getRoleAction(roleOrPlayer as Player) !== null;
   } else {
     return getRoleAction(roleOrPlayer as Role) !== null;

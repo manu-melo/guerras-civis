@@ -46,6 +46,12 @@ export function Header() {
             >
               Como Jogar
             </Link>
+            <Link
+              href="/manual-host"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Manual do Host
+            </Link>
           </nav>
         </div>
 
@@ -73,6 +79,12 @@ export function Header() {
           className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
           Como Jogar
+        </Link>
+        <Link
+          href="/manual-host"
+          className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+        >
+          Manual do Host
         </Link>
       </nav>
     </header>
