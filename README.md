@@ -6,6 +6,9 @@ Sistema web moderno para hospedar e gerenciar partidas do jogo **Guerras Civis**
 
 O Guerras Civis é um jogo clássico de estratégia e dedução do universo Habbo, onde jogadores se dividem em dois times (Civis vs Máfia) e lutam pela dominação através de ações noturnas secretas e votações diárias.
 
+## Acesse o site
+https://guerras-civis.vercel.app
+
 ### Características
 
 - **12, 14, 16 ou 18 jogadores** divididos igualmente entre os times
