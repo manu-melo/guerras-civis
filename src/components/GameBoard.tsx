@@ -172,8 +172,8 @@ export function GameBoard() {
 
     if (!actor || !target || !actor.role) return;
 
-    // Determinar ação automaticamente baseada no cargo
-    const actionType = getRoleAction(actor.role);
+    // Determinar ação automaticamente baseada no cargo (considerando Coringa)
+    const actionType = getRoleAction(actor);
     if (!actionType) {
       alert(`O cargo ${actor.role} não possui ação noturna.`);
       return;
@@ -627,7 +627,7 @@ export function GameBoard() {
                             (p) => p.id === selectedActor
                           );
                           if (!actor?.role) return "Selecione um jogador";
-                          const action = getRoleAction(actor.role);
+                          const action = getRoleAction(actor);
                           if (!action)
                             return `${actor.role} não possui ação noturna`;
 

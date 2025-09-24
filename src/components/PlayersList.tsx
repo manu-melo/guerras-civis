@@ -54,8 +54,8 @@ export function PlayersList({
   const getRoleColor = (role?: Role): string => {
     if (!role) return "";
 
-    // Civis em azul, Máfias em vermelho
-    const civilRoles = [
+    // Cargos em azul (civis benéficos)
+    const blueRoles = [
       "Juiz",
       "Policial",
       "Anjo",
@@ -64,13 +64,28 @@ export function PlayersList({
       "Fada",
       "Espírito Vingativo",
       "Escudeiro",
-      "Coringa",
     ];
 
-    if (civilRoles.includes(role)) {
+    // Cargos em vermelho (máfia e civis malignos)
+    const redRoles = [
+      "Assassino",
+      "Silenciador",
+      "Paralisador",
+      "Chefão",
+      "Mafioso",
+      "Espiã",
+      "Homem-bomba",
+      "Psicopata",
+      "Demônio",
+    ];
+
+    if (blueRoles.includes(role)) {
       return "text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950";
-    } else {
+    } else if (redRoles.includes(role)) {
       return "text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950";
+    } else {
+      // Fallback para outros cargos (incluindo Coringa original)
+      return "text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-950";
     }
   };
 

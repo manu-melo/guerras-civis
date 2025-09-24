@@ -27,6 +27,7 @@
 # documentation files
 instrucoes.md
 detalhes.md
+manual-host.md
 
 # debug
 npm-debug.log*

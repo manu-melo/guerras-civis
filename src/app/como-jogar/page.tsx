@@ -216,7 +216,7 @@ export default function ComoJogarPage() {
                 </h4>
                 <p className="text-sm">
                   No início da partida, um dado determina qual cargo assumirá
-                  (1-5): 1-Policial, 2-Anjo, 3-Detetive, 4-Fada, 5-Escudeiro.
+                  (1-5): 1-Assassino, 2-Silenciador, 3-Paralisador, 4-Anjo, 5-Detetive.
                   Continua sendo civil.
                 </p>
               </div>

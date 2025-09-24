@@ -128,7 +128,8 @@ export function processJokerDice(
     if (player.role === "Coringa") {
       return {
         ...player,
-        role: mapping.role,
+        originalRole: "Coringa", // Salva o cargo original
+        role: mapping.role, // Assume o novo cargo baseado no dado
         // Mantém team como CIVIL (Coringa sempre é civil)
         team: "CIVIL",
       };
@@ -912,9 +913,14 @@ function getActionName(actionType: ActionType): string {
 }
 
 /**
- * Obtém a ação padrão de um cargo
+ * Obtém a ação padrão de um cargo (sobrecarga para Role)
  */
-export function getRoleAction(role: Role): ActionType | null {
+export function getRoleAction(role: Role): ActionType | null;
+/**
+ * Obtém a ação padrão de um jogador (considerando Coringa)
+ */
+export function getRoleAction(player: Player): ActionType | null;
+export function getRoleAction(roleOrPlayer: Role | Player): ActionType | null {
   const roleActions: Partial<Record<Role, ActionType>> = {
     // Civis
     Juiz: "EXECUTAR", // Durante a noite pode executar alguém uma vez só durante toda partida
@@ -925,7 +931,6 @@ export function getRoleAction(role: Role): ActionType | null {
     Escudeiro: "DEFENDER", // Durante a noite pode proteger alguém refletindo as ações
     // Aldeão: sem ação noturna, mas voto vale 3
     // Espírito Vingativo: ação especial só ao morrer
-    // Coringa: ação depende do dado inicial
 
     // Máfias
     Assassino: "ASSASSINAR", // Durante a noite tem o poder de assassinar alguém toda noite
@@ -939,13 +944,36 @@ export function getRoleAction(role: Role): ActionType | null {
     // Homem-bomba: ação especial só ao morrer
   };
 
+  // Se é um Player, verificar se é Coringa transformado
+  if (typeof roleOrPlayer === 'object' && 'id' in roleOrPlayer) {
+    const player = roleOrPlayer as Player;
+    // Se é um Coringa que já foi transformado, usar o cargo atual
+    if (player.originalRole === "Coringa" && player.role) {
+      return roleActions[player.role] || null;
+    }
+    // Caso contrário, usar o cargo atual normalmente
+    return player.role ? roleActions[player.role] || null : null;
+  }
+  
+  // Se é apenas um Role, usar normalmente (Coringa sem dado ainda não tem ação)
+  const role = roleOrPlayer as Role;
   return roleActions[role] || null;
 }
 /**
- * Verifica se um cargo tem ação noturna
+ * Verifica se um cargo tem ação noturna (sobrecarga para Role)
  */
-export function roleHasNightAction(role: Role): boolean {
-  return getRoleAction(role) !== null;
+export function roleHasNightAction(role: Role): boolean;
+/**
+ * Verifica se um jogador tem ação noturna (considerando Coringa)
+ */
+export function roleHasNightAction(player: Player): boolean;
+export function roleHasNightAction(roleOrPlayer: Role | Player): boolean {
+  // Type guard para distinguir entre Player e Role
+  if (typeof roleOrPlayer === 'object' && 'id' in roleOrPlayer) {
+    return getRoleAction(roleOrPlayer as Player) !== null;
+  } else {
+    return getRoleAction(roleOrPlayer as Role) !== null;
+  }
 }
 
 /**

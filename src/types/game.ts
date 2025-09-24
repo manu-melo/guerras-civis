@@ -169,9 +169,9 @@ export const MAFIA_ROLES: Role[] = [
 
 // Mapeamento do Coringa
 export const JOKER_MAPPINGS: JokerMapping[] = [
-  { diceValue: 1, role: "Policial", team: "CIVIL" },
-  { diceValue: 2, role: "Anjo", team: "CIVIL" },
-  { diceValue: 3, role: "Detetive", team: "CIVIL" },
-  { diceValue: 4, role: "Fada", team: "CIVIL" },
-  { diceValue: 5, role: "Escudeiro", team: "CIVIL" },
+  { diceValue: 1, role: "Assassino", team: "CIVIL" },
+  { diceValue: 2, role: "Silenciador", team: "CIVIL" },
+  { diceValue: 3, role: "Paralisador", team: "CIVIL" },
+  { diceValue: 4, role: "Anjo", team: "CIVIL" },
+  { diceValue: 5, role: "Detetive", team: "CIVIL" },
 ];
