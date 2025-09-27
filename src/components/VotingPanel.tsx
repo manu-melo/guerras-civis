@@ -14,6 +14,7 @@ interface VotingPanelProps {
   onVote: (targetId: string, votes: number) => void;
   onEndVoting: () => void;
   tiedPlayers?: Player[]; // Para votação de desempate
+  protectedPlayerIds?: string[]; // Jogadores protegidos pelo Anjo
 }
 
 export function VotingPanel({
@@ -22,13 +23,34 @@ export function VotingPanel({
   onVote,
   onEndVoting,
   tiedPlayers,
+  protectedPlayerIds = [],
 }: VotingPanelProps) {
   const [localVotes, setLocalVotes] = useState<Record<string, number>>({});
 
-  // Se há jogadores empatados, usar apenas eles. Senão, usar todos
-  const votingPlayers =
-    tiedPlayers && tiedPlayers.length > 0 ? tiedPlayers : players;
-  const isTieBreaker = tiedPlayers && tiedPlayers.length > 0;
+  // LÓGICA RIGOROSA PARA VOTAÇÃO DE DESEMPATE
+  const validTiedPlayers =
+    tiedPlayers && Array.isArray(tiedPlayers) && tiedPlayers.length > 1
+      ? tiedPlayers
+      : null;
+
+  const isTieBreaker = validTiedPlayers !== null;
+
+  // REGRA CRÍTICA: Se é votação de desempate, usar SOMENTE os jogadores empatados
+  // Se é votação normal, usar todos os jogadores vivos
+  let basePlayers: Player[];
+
+  if (isTieBreaker && validTiedPlayers) {
+    // DESEMPATE: usar APENAS os jogadores empatados
+    basePlayers = validTiedPlayers;
+  } else {
+    // VOTAÇÃO NORMAL: usar todos os jogadores vivos
+    basePlayers = players.filter((p) => p.alive);
+  }
+
+  // Filtrar jogadores protegidos pelo Anjo (proteção vale apenas no dia seguinte à noite da proteção)
+  const votingPlayers = basePlayers.filter(
+    (player) => !protectedPlayerIds.includes(player.id)
+  );
 
   // Calcular total de votos já registrados
   const totalVotesRegistered = Object.values(votes).reduce(

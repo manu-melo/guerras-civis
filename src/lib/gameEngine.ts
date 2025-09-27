@@ -161,16 +161,132 @@ export function validateAction(
     return { valid: false, reason: "Não pode se auto-alvejar" };
   }
 
-  // Verificar regra específica do Aprendiz
+  // Verificar regra específica do Aprendiz - VALIDAÇÃO RIGOROSA
   if (actor.role === "Aprendiz" && action.type === "ASSASSINAR") {
-    const assassinAlive = players.some(
-      (p) => p.role === "Assassino" && p.alive
+    // REGRA 1: Verificar se há Assassino da MÁFIA vivo (não Coringa Assassino)
+    const mafiaAssassinAlive = players.some(
+      (p) =>
+        p.role === "Assassino" &&
+        p.alive &&
+        p.team === "MAFIA" &&
+        p.originalRole !== "Coringa"
     );
-    if (assassinAlive) {
+
+    if (mafiaAssassinAlive) {
       return {
         valid: false,
-        reason: "Aprendiz não pode agir enquanto o Assassino estiver vivo",
+        reason:
+          "Aprendiz não pode agir enquanto o Assassino da Máfia estiver vivo",
       };
+    }
+
+    // REGRA 2: Verificar se o Aprendiz herdou o poder de assassinato
+    if (!actor.meta?.hasAssassinPower) {
+      return {
+        valid: false,
+        reason:
+          "Aprendiz só pode assassinar após herdar o poder do Assassino da Máfia morto",
+      };
+    }
+
+    // REGRA 3: Verificar se existe pelo menos um Assassino da MÁFIA morto (que transferiu o poder)
+    const deadMafiaAssassin = players.some(
+      (p) =>
+        p.role === "Assassino" &&
+        !p.alive &&
+        p.team === "MAFIA" &&
+        p.originalRole !== "Coringa"
+    );
+
+    if (!deadMafiaAssassin) {
+      return {
+        valid: false,
+        reason:
+          "Aprendiz só pode assassinar após a morte de um Assassino da Máfia",
+      };
+    }
+  }
+
+  // 🚫 VALIDAÇÃO CRÍTICA DO JUIZ - BLOQUEIO TOTAL APÓS 1ª EXECUÇÃO
+  if (actor.role === "Juiz" && action.type === "EXECUTAR") {
+    // Buscar TODAS as execuções deste Juiz (incluindo processadas e não processadas)
+    const allJuizExecutions = existingActions.filter(
+      (a) => a.actorId === actor.id && a.type === "EXECUTAR"
+    );
+
+    // LIMITE ABSOLUTO: Se já executou uma vez, aplicar regras rigorosas
+    if (allJuizExecutions.length >= 1) {
+      // Buscar apenas execuções VÁLIDAS para análise das condições
+      const validExecutions = allJuizExecutions.filter(
+        (a) => a.status === "VALID"
+      );
+
+      if (validExecutions.length >= 1) {
+        const firstExecution = validExecutions[0];
+        const firstTargetRole = firstExecution.targetRole;
+
+        // VERIFICAR CONDIÇÕES PARA SEGUNDA EXECUÇÃO
+        let canExecuteSecondTime = false;
+        let blockReason = "";
+
+        // CONDIÇÃO 1: Primeira execução matou Assassino/Aprendiz da MÁFIA ORIGINAL
+        if (firstTargetRole === "Assassino" || firstTargetRole === "Aprendiz") {
+          const firstTarget = players.find(
+            (p) => p.id === firstExecution.targetId
+          );
+          if (
+            firstTarget &&
+            firstTarget.team === "MAFIA" &&
+            firstTarget.originalRole !== "Coringa"
+          ) {
+            canExecuteSecondTime = true;
+            blockReason = `✅ Segunda execução permitida: matou ${firstTargetRole} da Máfia`;
+          } else {
+            blockReason = `❌ ${firstTargetRole} não era da Máfia original`;
+          }
+        } else {
+          blockReason = `❌ Primeira execução foi ${firstTargetRole} (não Assassino/Aprendiz)`;
+        }
+
+        // CONDIÇÃO 2: Direito por morte do Policial (apenas se condição 1 falhou)
+        if (!canExecuteSecondTime) {
+          const policemanDead = players.some(
+            (p) =>
+              p.role === "Policial" &&
+              !p.alive &&
+              p.team === "CIVIL" &&
+              p.originalRole !== "Coringa"
+          );
+
+          if (policemanDead && !actor.meta?.usedPoliceExecutionRight) {
+            canExecuteSecondTime = true;
+            blockReason = "✅ Segunda execução permitida: Policial morreu";
+            // Marcar uso do direito
+            actor.meta = { ...actor.meta, usedPoliceExecutionRight: true };
+          } else if (!policemanDead) {
+            blockReason += " | Policial ainda vivo";
+          } else {
+            blockReason += " | Direito por morte do Policial já usado";
+          }
+        }
+
+        // BLOQUEAR se não atende nenhuma condição
+        if (!canExecuteSecondTime) {
+          return {
+            valid: false,
+            reason: `🚫 EXECUÇÃO BLOQUEADA: Juiz já executou ${validExecutions.length}x. ${blockReason}. Para executar novamente: (1) Primeira execução deve ser Assassino/Aprendiz da MÁFIA original, OU (2) Policial Civil morreu (direito único)`,
+          };
+        }
+      }
+
+      // Se já executou 2 vezes válidas, bloquear qualquer tentativa adicional
+      if (validExecutions.length >= 2) {
+        return {
+          valid: false,
+          reason:
+            "🚫 LIMITE ATINGIDO: Juiz já executou 2 vezes - máximo absoluto",
+        };
+      }
     }
   }
 
@@ -231,14 +347,44 @@ export function processNight(
   messages: Message[];
   updatedPlayers: Player[];
 } {
+  // NÃO limpar efeitos temporários no início - eles devem persistir durante o processamento
+  // Os efeitos serão limpos no FINAL do processamento da noite
+  let updatedPlayers = [...players];
+
   // Ordenar ações por ordem de submissão
   const sortedActions = [...actions].sort((a, b) => a.order - b.order);
 
   const messages: Message[] = [];
-  let updatedPlayers = [...players];
   const processedActions: Action[] = [];
 
   for (const action of sortedActions) {
+    // Verificar se o ator foi silenciado, paralisado ou preso por ação anterior
+    const actor = updatedPlayers.find((p) => p.id === action.actorId);
+    if (
+      actor?.meta?.silenced ||
+      actor?.meta?.paralyzed ||
+      actor?.meta?.imprisoned
+    ) {
+      // Anular a ação
+      const annulledAction = {
+        ...action,
+        status: "ANULLED" as const,
+        meta: {
+          ...action.meta,
+          reason: actor.meta.silenced
+            ? "Jogador foi silenciado"
+            : actor.meta.paralyzed
+            ? "Jogador foi paralisado"
+            : "Jogador foi preso",
+        },
+      };
+      processedActions.push(annulledAction);
+      messages.push(
+        createActionMessage(annulledAction, "ACTION_ANULLED", updatedPlayers)
+      );
+      continue;
+    }
+
     const result = processAction(action, updatedPlayers, processedActions);
 
     updatedPlayers = result.updatedPlayers;
@@ -260,6 +406,49 @@ export function processNight(
   };
 
   messages.push(summaryMessage);
+
+  // LIMPEZA INTELIGENTE: limpar efeitos temporários, mas PRESERVAR efeitos de reflexão
+  // Efeitos de reflexão devem durar até a próxima noite
+  updatedPlayers = updatedPlayers.map((player) => {
+    if (player.meta) {
+      const newMeta = { ...player.meta };
+
+      // Limpar efeitos normais (não reflexivos)
+      if (player.meta.silenced && !player.meta.silencedByReflection) {
+        delete newMeta.silenced;
+      }
+      if (player.meta.paralyzed && !player.meta.paralyzedByReflection) {
+        delete newMeta.paralyzed;
+      }
+      if (player.meta.imprisoned && !player.meta.imprisonedByReflection) {
+        delete newMeta.imprisoned;
+      }
+      if (player.meta.protected && !player.meta.protectedByReflection) {
+        delete newMeta.protected;
+      }
+
+      // PRESERVAR marcadores de reflexão para próxima noite, mas limpar flags de reflexão
+      if (player.meta.silencedByReflection) {
+        delete newMeta.silencedByReflection;
+        // silenced permanece true para a próxima noite
+      }
+      if (player.meta.paralyzedByReflection) {
+        delete newMeta.paralyzedByReflection;
+        // paralyzed permanece true para a próxima noite
+      }
+      if (player.meta.imprisonedByReflection) {
+        delete newMeta.imprisonedByReflection;
+        // imprisoned permanece true para a próxima noite
+      }
+      if (player.meta.protectedByReflection) {
+        delete newMeta.protectedByReflection;
+        // protected permanece true para a próxima noite
+      }
+
+      return { ...player, meta: newMeta };
+    }
+    return player;
+  });
 
   return { processedActions, messages, updatedPlayers };
 }
@@ -340,12 +529,26 @@ function processAction(
         break;
       case "SILENCIAR":
         updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id ? { ...p, meta: { ...p.meta, silenced: true } } : p
+          p.id === actor.id
+            ? {
+                ...p,
+                meta: { ...p.meta, silenced: true, silencedByReflection: true },
+              }
+            : p
         );
         break;
       case "PARALISAR":
         updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id ? { ...p, meta: { ...p.meta, paralyzed: true } } : p
+          p.id === actor.id
+            ? {
+                ...p,
+                meta: {
+                  ...p.meta,
+                  paralyzed: true,
+                  paralyzedByReflection: true,
+                },
+              }
+            : p
         );
         break;
       case "EXECUTAR":
@@ -358,22 +561,50 @@ function processAction(
       case "PROTEGER":
         // Anjo tentou proteger alguém, mas a proteção é refletida para o próprio Anjo
         updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id ? { ...p, meta: { ...p.meta, protected: true } } : p
+          p.id === actor.id
+            ? {
+                ...p,
+                meta: {
+                  ...p.meta,
+                  protected: true,
+                  protectedByReflection: true,
+                },
+              }
+            : p
         );
         break;
       case "INVESTIGAR":
-        // Detetive tentou investigar, mas investiga a si mesmo
-        // (Na prática, ele já conhece seu próprio cargo, então não há efeito mecânico)
+        // Detetive tentou investigar, mas é investigado pelo alvo
+        // O alvo descobre o cargo do Detetive
+        messages.push({
+          id: uuidv4(),
+          createdAt: Date.now(),
+          level: "INFO",
+          text: `🔍 INVESTIGAÇÃO REFLETIDA: ${target.nick} descobriu que ${actor.nick} é ${actor.role}!`,
+        });
         break;
       case "FOTOGRAFAR":
-        // Paparazzi tentou fotografar, mas fotografa a si mesmo
-        // (Revela seu próprio cargo publicamente)
+        // Paparazzi tentou fotografar, mas é fotografado pelo alvo
+        // O cargo do Paparazzi é revelado publicamente
+        messages.push({
+          id: uuidv4(),
+          createdAt: Date.now(),
+          level: "ELIMINATION",
+          text: `📸 FOTOGRAFIA REFLETIDA: ${actor.nick} é ${actor.role}! (revelado por reflexão)`,
+        });
         break;
       case "PRENDER":
         // Policial tentou prender, mas prende a si mesmo
         updatedPlayers = updatedPlayers.map((p) =>
           p.id === actor.id
-            ? { ...p, meta: { ...p.meta, imprisoned: true } }
+            ? {
+                ...p,
+                meta: {
+                  ...p.meta,
+                  imprisoned: true,
+                  imprisonedByReflection: true,
+                },
+              }
             : p
         );
         break;
@@ -456,6 +687,31 @@ function processAction(
         target.id,
         "Execução pelo Juiz"
       );
+
+      // Se o Juiz estava usando o direito de execução pós-morte do policial, marcar como usado
+      const policemanDied = players.some(
+        (p) => p.role === "Policial" && !p.alive
+      );
+      const previousExecutions = processedActions.filter(
+        (a) =>
+          a.actorId === actor.id &&
+          a.type === "EXECUTAR" &&
+          a.status === "VALID"
+      );
+
+      if (
+        policemanDied &&
+        previousExecutions.length > 0 &&
+        !actor.meta?.usedPoliceExecutionRight
+      ) {
+        // Marcar que o Juiz usou o direito de execução pós-morte do policial
+        updatedPlayers = updatedPlayers.map((p) =>
+          p.id === actor.id
+            ? { ...p, meta: { ...p.meta, usedPoliceExecutionRight: true } }
+            : p
+        );
+      }
+
       messages.push(createActionMessage(action, "ACTION_VALID", players));
       break;
 
@@ -615,23 +871,28 @@ export function processSpecialElimination(
       break;
 
     case "Assassino":
-      // Transferir poder para Aprendiz se houver
-      const apprentice = updatedPlayers.find(
-        (p) => p.role === "Aprendiz" && p.alive
-      );
-      if (apprentice) {
-        updatedPlayers = updatedPlayers.map((p) =>
-          p.id === apprentice.id
-            ? { ...p, meta: { ...p.meta, hasAssassinPower: true } }
-            : p
+      // Transferir poder para Aprendiz APENAS se for um Assassino da MÁFIA (não Coringa)
+      if (
+        eliminatedPlayer.team === "MAFIA" &&
+        eliminatedPlayer.originalRole !== "Coringa"
+      ) {
+        const apprentice = updatedPlayers.find(
+          (p) => p.role === "Aprendiz" && p.alive && p.team === "MAFIA"
         );
+        if (apprentice) {
+          updatedPlayers = updatedPlayers.map((p) =>
+            p.id === apprentice.id
+              ? { ...p, meta: { ...p.meta, hasAssassinPower: true } }
+              : p
+          );
 
-        messages.push({
-          id: uuidv4(),
-          createdAt: Date.now(),
-          level: "INFO",
-          text: `${apprentice.nick} (Aprendiz) herdou o poder de assassinato`,
-        });
+          messages.push({
+            id: uuidv4(),
+            createdAt: Date.now(),
+            level: "INFO",
+            text: `${apprentice.nick} (Aprendiz) herdou o poder de assassinato após a morte do Assassino da Máfia`,
+          });
+        }
       }
       break;
   }
@@ -855,7 +1116,7 @@ function createPhotoMessage(action: Action, target: Player): Message {
   return {
     id: uuidv4(),
     createdAt: action.timestamp,
-    level: "NEUTRAL",
+    level: "ACTION_VALID",
     text: `[${timestamp}] FOTOGRAFIA — ${target.nick} foi fotografado: ${target.role}`,
   };
 }
@@ -944,9 +1205,20 @@ export function getRoleAction(roleOrPlayer: Role | Player): ActionType | null {
     // Homem-bomba: ação especial só ao morrer
   };
 
-  // Se é um Player, verificar se é Coringa transformado
+  // Se é um Player, verificar se é Coringa transformado ou Aprendiz com poder
   if (typeof roleOrPlayer === "object" && "id" in roleOrPlayer) {
     const player = roleOrPlayer as Player;
+
+    // Caso especial do Aprendiz - só pode agir se tiver herdado o poder
+    if (player.role === "Aprendiz") {
+      // VALIDAÇÃO RIGOROSA: só retorna ação se realmente pode agir
+      if (player.meta?.hasAssassinPower) {
+        return "ASSASSINAR";
+      }
+      // Se não tem poder herdado, NÃO PODE AGIR
+      return null;
+    }
+
     // Se é um Coringa que já foi transformado, usar o cargo atual
     if (player.originalRole === "Coringa" && player.role) {
       return roleActions[player.role] || null;
@@ -1053,7 +1325,7 @@ export function processDiceAction(
         messages.push({
           id: uuidv4(),
           createdAt: Date.now(),
-          level: "NEUTRAL",
+          level: "ACTION_VALID",
           text: `[${timestamp}] 🧚‍♀️ FADA — ${target.nick} (${target.role}) foi ${
             effectNames[effect as keyof typeof effectNames]
           } pela magia da Fada (dado: ${diceValue})`,
@@ -1179,17 +1451,23 @@ export function processVotingResult(
       text: `[${timestamp}] 🗳️ VOTAÇÃO — ${eliminatedPlayer.nick} (${eliminatedPlayer.role}) foi eliminado por votação com ${maxVotes} votos`,
     });
 
-    // Processar eliminações especiais (Espírito Vingativo, Homem-bomba, etc.)
-    const { updatedPlayers: playersAfterSpecial, messages: specialMessages } =
-      processSpecialElimination(
-        updatedPlayers,
-        eliminatedPlayer,
-        "Eliminado por votação",
-        {}
-      );
+    // Processar eliminações especiais apenas para cargos que não requerem input adicional
+    // Homem-bomba e Espírito Vingativo são tratados pela máquina de estados
+    if (
+      eliminatedPlayer.role !== "Homem-bomba" &&
+      eliminatedPlayer.role !== "Espírito Vingativo"
+    ) {
+      const { updatedPlayers: playersAfterSpecial, messages: specialMessages } =
+        processSpecialElimination(
+          updatedPlayers,
+          eliminatedPlayer,
+          "Eliminado por votação",
+          {}
+        );
 
-    updatedPlayers = playersAfterSpecial;
-    messages.push(...specialMessages);
+      updatedPlayers = playersAfterSpecial;
+      messages.push(...specialMessages);
+    }
   }
 
   return { updatedPlayers, eliminatedPlayer, messages, isTie, tiedPlayers };
@@ -1197,4 +1475,34 @@ export function processVotingResult(
 
 function canTargetSelf(role: Role): boolean {
   return ROLES_DATA[role].canTargetSelf || false;
+}
+
+/**
+ * Verifica se um Homem-bomba foi eliminado e precisa de processamento de explosão
+ */
+export function checkForBombExplosion(
+  playersBefore: Player[],
+  playersAfter: Player[]
+): Player | null {
+  // Encontrar jogadores que eram vivos antes e agora estão mortos
+  const newlyEliminated = playersBefore.filter((playerBefore) => {
+    const playerAfter = playersAfter.find((p) => p.id === playerBefore.id);
+    return playerBefore.alive && playerAfter && !playerAfter.alive;
+  });
+
+  // Verificar se algum dos eliminados é Homem-bomba
+  const eliminatedBomb = newlyEliminated.find(
+    (player) => player.role === "Homem-bomba"
+  );
+
+  return eliminatedBomb || null;
+}
+
+/**
+ * Retorna jogadores que estão protegidos pelo Anjo e não podem ser votados
+ */
+export function getAngelProtectedPlayers(actions: Action[]): string[] {
+  return actions
+    .filter((action) => action.type === "PROTEGER" && action.status === "VALID")
+    .map((action) => action.targetId);
 }

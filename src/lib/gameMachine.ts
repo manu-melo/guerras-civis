@@ -15,6 +15,7 @@ import {
   processDiceAction,
   processVotingResult,
   checkWinConditions,
+  checkForBombExplosion,
 } from "@/lib/gameEngine";
 import { v4 as uuidv4 } from "uuid";
 
@@ -135,9 +136,15 @@ export const gameMachine = createMachine(
           phase: () => "EVENTS" as GamePhase,
         }),
         on: {
-          GO_TO_DAY: {
-            target: "day",
-          },
+          GO_TO_DAY: [
+            {
+              target: "bombExplosion",
+              guard: "hasBombExplosion",
+            },
+            {
+              target: "day",
+            },
+          ],
         },
       },
 
@@ -160,6 +167,7 @@ export const gameMachine = createMachine(
           phase: () => "VOTING" as GamePhase,
           isVotingActive: () => true,
           votes: () => ({}),
+          tiedPlayers: () => [], // Limpar jogadores empatados ao iniciar nova votação
         }),
         on: {
           REGISTER_VOTE: {
@@ -175,6 +183,11 @@ export const gameMachine = createMachine(
               target: "tieBreaker",
               guard: "hasVotingTie",
               actions: ["checkVotingTie"],
+            },
+            {
+              target: "bombExplosion",
+              guard: "eliminatedBombVoting",
+              actions: ["processEliminationWithBomb"],
             },
             {
               target: "spiritRevenge",
@@ -195,9 +208,10 @@ export const gameMachine = createMachine(
         }),
         on: {
           REPEAT_VOTING: {
-            target: "voting",
+            target: "tieVoting",
             actions: assign({
               votes: () => ({}),
+              // Manter os jogadores empatados para a votação de desempate
               tiedPlayers: ({ context }) => context.tiedPlayers || [],
             }),
           },
@@ -205,6 +219,45 @@ export const gameMachine = createMachine(
             target: "night",
             actions: ["incrementRound", "addNoEliminationMessage"],
           },
+        },
+      },
+
+      tieVoting: {
+        entry: assign({
+          phase: () => "TIE_VOTING" as GamePhase,
+          isVotingActive: () => true,
+          // NÃO limpar votes aqui, já foi limpo na transição
+        }),
+        on: {
+          REGISTER_VOTE: {
+            actions: "registerVote",
+          },
+          END_VOTING: [
+            {
+              target: "#guerrasCivis.gameOver",
+              guard: "isGameOverAfterVoting",
+              actions: ["processElimination"],
+            },
+            {
+              target: "tieBreaker",
+              guard: "hasVotingTie",
+              actions: ["checkVotingTie"],
+            },
+            {
+              target: "bombExplosion",
+              guard: "eliminatedBombVoting",
+              actions: ["processEliminationWithBomb"],
+            },
+            {
+              target: "spiritRevenge",
+              guard: "eliminatedSpiritVingativo",
+              actions: ["processEliminationWithSpirit"],
+            },
+            {
+              target: "night",
+              actions: ["processElimination", "incrementRound"],
+            },
+          ],
         },
       },
 
@@ -217,6 +270,30 @@ export const gameMachine = createMachine(
             target: "night",
             actions: ["processSpiritRevenge", "incrementRound"],
           },
+        },
+      },
+
+      bombExplosion: {
+        entry: assign({
+          phase: () => "BOMB_EXPLOSION" as GamePhase,
+        }),
+        on: {
+          PROCESS_BOMB_EXPLOSION: [
+            {
+              target: "#guerrasCivis.gameOver",
+              guard: "isGameOverAfterBombExplosion",
+              actions: ["processBombExplosion"],
+            },
+            {
+              target: "spiritRevenge",
+              guard: "eliminatedSpiritInBombExplosion",
+              actions: ["processBombExplosionWithSpirit"],
+            },
+            {
+              target: "night",
+              actions: ["processBombExplosion", "incrementRound"],
+            },
+          ],
         },
       },
 
@@ -414,6 +491,15 @@ export const gameMachine = createMachine(
           const result = processNight(context.actions, context.players);
           return result.updatedPlayers;
         },
+        eliminatedBombPlayer: ({ context }) => {
+          // Verificar se um Homem-bomba foi eliminado
+          const result = processNight(context.actions, context.players);
+          const bombPlayer = checkForBombExplosion(
+            context.players,
+            result.updatedPlayers
+          );
+          return bombPlayer || context.eliminatedBombPlayer;
+        },
       }),
 
       registerVote: assign({
@@ -598,6 +684,107 @@ export const gameMachine = createMachine(
         eliminatedSpiritPlayer: () => undefined, // Limpar após processar
       }),
 
+      processBombExplosion: assign({
+        players: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_BOMB_EXPLOSION" ||
+            !context.eliminatedBombPlayer
+          )
+            return context.players;
+
+          // Eliminar os jogadores escolhidos para explosão
+          const targetIds = event.targetIds || [];
+          const updatedPlayers = context.players.map((player) =>
+            targetIds.includes(player.id) ? { ...player, alive: false } : player
+          );
+
+          return updatedPlayers;
+        },
+        messages: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_BOMB_EXPLOSION" ||
+            !context.eliminatedBombPlayer
+          )
+            return context.messages;
+
+          const targetIds = event.targetIds || [];
+          const newMessages: Message[] = [];
+
+          for (const targetId of targetIds) {
+            const victim = context.players.find((p) => p.id === targetId);
+            if (victim) {
+              newMessages.push({
+                id: uuidv4(),
+                createdAt: Date.now(),
+                level: "ELIMINATION",
+                text: `💣 EXPLOSÃO — ${victim.nick} (${victim.role}) foi eliminado pela explosão de ${context.eliminatedBombPlayer.nick}`,
+              });
+            }
+          }
+
+          return [...context.messages, ...newMessages];
+        },
+        eliminatedBombPlayer: () => undefined, // Limpar após processar
+      }),
+
+      processBombExplosionWithSpirit: assign({
+        players: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_BOMB_EXPLOSION" ||
+            !context.eliminatedBombPlayer
+          )
+            return context.players;
+
+          // Eliminar os jogadores escolhidos para explosão
+          const targetIds = event.targetIds || [];
+          const updatedPlayers = context.players.map((player) =>
+            targetIds.includes(player.id) ? { ...player, alive: false } : player
+          );
+
+          return updatedPlayers;
+        },
+        eliminatedSpiritPlayer: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_BOMB_EXPLOSION" ||
+            !context.eliminatedBombPlayer
+          )
+            return undefined;
+
+          // Verificar se algum dos eliminados na explosão é Espírito Vingativo
+          const targetIds = event.targetIds || [];
+          const eliminatedSpirit = context.players.find(
+            (p) => targetIds.includes(p.id) && p.role === "Espírito Vingativo"
+          );
+
+          return eliminatedSpirit || undefined;
+        },
+        messages: ({ context, event }) => {
+          if (
+            event.type !== "PROCESS_BOMB_EXPLOSION" ||
+            !context.eliminatedBombPlayer
+          )
+            return context.messages;
+
+          const targetIds = event.targetIds || [];
+          const newMessages: Message[] = [];
+
+          for (const targetId of targetIds) {
+            const victim = context.players.find((p) => p.id === targetId);
+            if (victim) {
+              newMessages.push({
+                id: uuidv4(),
+                createdAt: Date.now(),
+                level: "ELIMINATION",
+                text: `💣 EXPLOSÃO — ${victim.nick} (${victim.role}) foi eliminado pela explosão de ${context.eliminatedBombPlayer.nick}`,
+              });
+            }
+          }
+
+          return [...context.messages, ...newMessages];
+        },
+        eliminatedBombPlayer: () => undefined, // Limpar após processar
+      }),
+
       processEliminationWithSpirit: assign({
         players: ({ context }) => {
           try {
@@ -623,6 +810,48 @@ export const gameMachine = createMachine(
               : undefined;
           } catch (error) {
             console.error("Erro ao identificar Espírito Vingativo:", error);
+            return undefined;
+          }
+        },
+        messages: ({ context }) => {
+          try {
+            const { messages } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return [...context.messages, ...messages];
+          } catch (error) {
+            console.error("Erro ao processar mensagens de eliminação:", error);
+            return context.messages;
+          }
+        },
+        votes: () => ({}), // Limpar votos após processamento
+      }),
+
+      processEliminationWithBomb: assign({
+        players: ({ context }) => {
+          try {
+            const { updatedPlayers } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return updatedPlayers;
+          } catch (error) {
+            console.error("Erro ao processar eliminação:", error);
+            return context.players;
+          }
+        },
+        eliminatedBombPlayer: ({ context }) => {
+          try {
+            const { eliminatedPlayer } = processVotingResult(
+              context.players,
+              context.votes
+            );
+            return eliminatedPlayer && eliminatedPlayer.role === "Homem-bomba"
+              ? eliminatedPlayer
+              : undefined;
+          } catch (error) {
+            console.error("Erro ao identificar Homem-bomba:", error);
             return undefined;
           }
         },
@@ -703,6 +932,59 @@ export const gameMachine = createMachine(
           return !isTie && eliminatedPlayer?.role === "Espírito Vingativo";
         } catch (error) {
           console.error("Erro ao verificar Espírito Vingativo:", error);
+          return false;
+        }
+      },
+
+      eliminatedBombVoting: ({ context }) => {
+        try {
+          const { eliminatedPlayer, isTie } = processVotingResult(
+            context.players,
+            context.votes
+          );
+          return !isTie && eliminatedPlayer?.role === "Homem-bomba";
+        } catch (error) {
+          console.error("Erro ao verificar Homem-bomba na votação:", error);
+          return false;
+        }
+      },
+
+      eliminatedSpiritInBombExplosion: ({ context, event }) => {
+        if (event.type !== "PROCESS_BOMB_EXPLOSION") return false;
+
+        try {
+          // Verificar se algum dos alvos da explosão é Espírito Vingativo
+          const targetIds = event.targetIds || [];
+          return context.players.some(
+            (p) => targetIds.includes(p.id) && p.role === "Espírito Vingativo"
+          );
+        } catch (error) {
+          console.error(
+            "Erro ao verificar Espírito Vingativo na explosão:",
+            error
+          );
+          return false;
+        }
+      },
+
+      hasBombExplosion: ({ context }) => {
+        return context.eliminatedBombPlayer !== undefined;
+      },
+
+      isGameOverAfterBombExplosion: ({ context, event }) => {
+        if (event.type !== "PROCESS_BOMB_EXPLOSION") return false;
+
+        try {
+          // Simular a eliminação dos alvos da explosão
+          const targetIds = event.targetIds || [];
+          const updatedPlayers = context.players.map((player) =>
+            targetIds.includes(player.id) ? { ...player, alive: false } : player
+          );
+
+          const winConditions = checkWinConditions(updatedPlayers);
+          return winConditions.gameOver;
+        } catch (error) {
+          console.error("Erro ao verificar fim de jogo após explosão:", error);
           return false;
         }
       },

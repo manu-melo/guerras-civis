@@ -17,6 +17,7 @@ interface PlayersListProps {
   onHostNickChange: (nick: string) => void;
   onAddPlayer: (nick: string) => void;
   onRemovePlayer: (playerId: string) => void;
+  onClearPlayers?: () => void;
   onStartGame?: () => void;
   gameStarted?: boolean;
   showRoles?: boolean;
@@ -28,6 +29,7 @@ export function PlayersList({
   onHostNickChange,
   onAddPlayer,
   onRemovePlayer,
+  onClearPlayers,
   onStartGame,
   gameStarted = false,
   showRoles = false,
@@ -69,11 +71,11 @@ export function PlayersList({
     // Cargos em vermelho (máfia e civis malignos)
     const redRoles = [
       "Assassino",
+      "Aprendiz",
       "Silenciador",
       "Paralisador",
-      "Chefão",
-      "Mafioso",
-      "Espiã",
+      "Bruxa",
+      "Paparazzi",
       "Homem-bomba",
       "Psicopata",
       "Demônio",
@@ -281,20 +283,38 @@ export function PlayersList({
           </div>
         )}
 
-        {/* Start Game Button */}
-        {!gameStarted && onStartGame && (
-          <Button
-            onClick={onStartGame}
-            disabled={!isValidPlayerCount || !hostNick.trim()}
-            className="w-full"
-            size="lg"
-          >
-            {!hostNick.trim()
-              ? "Digite o nick do host"
-              : !isValidPlayerCount
-              ? "Número de jogadores inválido"
-              : "🗡️ Guerrear"}
-          </Button>
+        {/* Action Buttons */}
+        {!gameStarted && (
+          <div className="space-y-2">
+            {/* Clear Players Button */}
+            {onClearPlayers && players.length > 0 && (
+              <Button
+                onClick={onClearPlayers}
+                variant="outline"
+                className="w-full"
+                size="sm"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Limpar jogadores
+              </Button>
+            )}
+
+            {/* Start Game Button */}
+            {onStartGame && (
+              <Button
+                onClick={onStartGame}
+                disabled={!isValidPlayerCount || !hostNick.trim()}
+                className="w-full"
+                size="lg"
+              >
+                {!hostNick.trim()
+                  ? "Digite o nick do host"
+                  : !isValidPlayerCount
+                  ? "Número de jogadores inválido"
+                  : "🗡️ Guerrear"}
+              </Button>
+            )}
+          </div>
         )}
       </CardContent>
     </Card>

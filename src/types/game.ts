@@ -86,7 +86,9 @@ export type GamePhase =
   | "DAY"
   | "VOTING"
   | "TIE_BREAKER"
+  | "TIE_VOTING"
   | "SPIRIT_REVENGE"
+  | "BOMB_EXPLOSION"
   | "GAME_OVER";
 
 export interface GameState {
@@ -105,6 +107,7 @@ export interface GameState {
   isPiPEnabled: boolean;
   tiedPlayers?: Player[]; // Para resolver empates
   eliminatedSpiritPlayer?: Player; // Para vingança do Espírito Vingativo
+  eliminatedBombPlayer?: Player; // Para explosão do Homem-bomba
 }
 
 export interface VoteResult {

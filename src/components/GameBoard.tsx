@@ -11,6 +11,7 @@ import {
   getRoleAction,
   checkWinConditions,
   getPendingDiceActions,
+  getAngelProtectedPlayers,
 } from "@/lib/gameEngine";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ export function GameBoard() {
   const [jokerDiceValue, setJokerDiceValue] = useState<number>(1);
   const [showRolesModal, setShowRolesModal] = useState(false);
   const [eliminatePlayerId, setEliminatePlayerId] = useState<string>("");
+  const [selectedBombTargets, setSelectedBombTargets] = useState<string[]>([]);
   const [currentDiceAction, setCurrentDiceAction] = useState<Action | null>(
     null
   );
@@ -65,12 +67,27 @@ export function GameBoard() {
   const isDayPhase = state.matches("day");
   const isVotingPhase = state.matches("voting");
   const isTieBreaker = state.matches("tieBreaker");
+  const isTieVoting = state.matches("tieVoting");
   const isSpiritRevenge = state.matches("spiritRevenge");
+  const isBombExplosion = state.matches("bombExplosion");
   const isGameOver = state.matches("gameOver");
   const needsJokerDice = state.matches("jokerDice");
 
   const alivePlayers = players.filter((p) => p.alive);
   const stats = calculateStats();
+
+  // Sincronizar jogadores apenas quando necessário e sem causar loops
+  useEffect(() => {
+    // Apenas sincronizar do contexto da máquina para o estado local quando o jogo já começou
+    // e há jogadores na máquina mas não no estado local
+    if (
+      state.context.gameStarted &&
+      state.context.players.length > 0 &&
+      players.length === 0
+    ) {
+      setPlayers(state.context.players);
+    }
+  }, [state.context.players, state.context.gameStarted, players.length]);
 
   // Verificar ações pendentes de dados
   const pendingDiceActions = isDayPhase
@@ -134,6 +151,12 @@ export function GameBoard() {
 
   const handleRemovePlayer = (playerId: string) => {
     setPlayers((prev) => prev.filter((p) => p.id !== playerId));
+  };
+
+  const handleClearPlayers = () => {
+    if (confirm("Tem certeza que deseja limpar todos os jogadores?")) {
+      setPlayers([]);
+    }
   };
 
   const handleStartGame = () => {
@@ -216,6 +239,28 @@ export function GameBoard() {
     setDiceValue(1);
   };
 
+  const handleBombExplosion = () => {
+    send({
+      type: "PROCESS_BOMB_EXPLOSION",
+      targetIds: selectedBombTargets,
+    });
+
+    // Reset estado da explosão
+    setSelectedBombTargets([]);
+  };
+
+  const toggleBombTarget = (playerId: string) => {
+    setSelectedBombTargets((prev) => {
+      if (prev.includes(playerId)) {
+        return prev.filter((id) => id !== playerId);
+      } else if (prev.length < 2) {
+        // Máximo 2 alvos
+        return [...prev, playerId];
+      }
+      return prev;
+    });
+  };
+
   const startDiceInput = (action: Action) => {
     setCurrentDiceAction(action);
     setDiceValue(1);
@@ -234,6 +279,8 @@ export function GameBoard() {
         return `VOTAÇÃO DO DIA ${round}`;
       case "tieBreaker":
         return `EMPATE NA VOTAÇÃO - DIA ${round}`;
+      case "tieVoting":
+        return `VOTAÇÃO DE DESEMPATE - DIA ${round}`;
       case "spiritRevenge":
         return `VINGANÇA DO ESPÍRITO - DIA ${round}`;
       default:
@@ -252,6 +299,7 @@ export function GameBoard() {
               onHostNickChange={setHostNick}
               onAddPlayer={handleAddPlayer}
               onRemovePlayer={handleRemovePlayer}
+              onClearPlayers={handleClearPlayers}
               onStartGame={handleStartGame}
               gameStarted={false}
             />
@@ -287,11 +335,11 @@ export function GameBoard() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="1">1 - Policial</SelectItem>
-                  <SelectItem value="2">2 - Anjo</SelectItem>
-                  <SelectItem value="3">3 - Detetive</SelectItem>
-                  <SelectItem value="4">4 - Fada</SelectItem>
-                  <SelectItem value="5">5 - Escudeiro</SelectItem>
+                  <SelectItem value="1">1 - Assassino</SelectItem>
+                  <SelectItem value="2">2 - Silenciador</SelectItem>
+                  <SelectItem value="3">3 - Paralisador</SelectItem>
+                  <SelectItem value="4">4 - Anjo</SelectItem>
+                  <SelectItem value="5">5 - Detetive</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -304,6 +352,110 @@ export function GameBoard() {
               <strong>Importante:</strong> Se o resultado for 6, re-role o dado.
               Não registre o valor 6.
             </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (isBombExplosion) {
+    return (
+      <div className="min-h-screen flex items-center justify-center p-4">
+        <Card className="w-full max-w-2xl mx-auto shadow-lg border-2 border-red-500/20 dark:border-red-400/30">
+          <CardHeader className="text-center bg-red-50 dark:bg-red-950/50 border-b border-red-200 dark:border-red-800">
+            <CardTitle className="text-2xl font-bold text-red-700 dark:text-red-300 flex items-center justify-center gap-2">
+              💣 Explosão do Homem-bomba
+            </CardTitle>
+            <p className="text-red-600 dark:text-red-400 mt-2">
+              <strong className="text-lg">
+                {state.context.eliminatedBombPlayer?.nick}
+              </strong>{" "}
+              (Homem-bomba) foi eliminado!
+            </p>
+          </CardHeader>
+          <CardContent className="p-6 space-y-6">
+            <div className="text-center">
+              <p className="text-base text-foreground font-medium">
+                Selecione de 0 a 2 jogadores para serem eliminados pela
+                explosão:
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-base font-semibold text-foreground">
+                Alvos da explosão (máximo 2 jogadores)
+              </Label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-80 overflow-y-auto">
+                {alivePlayers.map((player) => (
+                  <div
+                    key={player.id}
+                    className={`
+                      flex items-center justify-between p-4 border-2 rounded-lg cursor-pointer 
+                      transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]
+                      ${
+                        selectedBombTargets.includes(player.id)
+                          ? "bg-red-100 dark:bg-red-900/50 border-red-500 dark:border-red-400 shadow-md ring-2 ring-red-200 dark:ring-red-700"
+                          : "bg-card hover:bg-muted/50 border-border hover:border-muted-foreground/20 shadow-sm"
+                      }
+                    `}
+                    onClick={() => toggleBombTarget(player.id)}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-lg text-foreground truncate">
+                        {player.nick}
+                      </div>
+                      {player.role && (
+                        <div className="text-sm text-muted-foreground mt-1">
+                          {player.role}
+                        </div>
+                      )}
+                    </div>
+                    {selectedBombTargets.includes(player.id) && (
+                      <div className="ml-3 flex-shrink-0">
+                        <div className="w-6 h-6 bg-red-500 dark:bg-red-400 rounded-full flex items-center justify-center">
+                          <span className="text-white text-sm font-bold">
+                            ✓
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {selectedBombTargets.length > 0 && (
+                <div className="text-center text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg">
+                  <strong>{selectedBombTargets.length}</strong> jogador
+                  {selectedBombTargets.length > 1 ? "es" : ""} selecionado
+                  {selectedBombTargets.length > 1 ? "s" : ""} para eliminação
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button
+                onClick={handleBombExplosion}
+                className="flex-1 text-base font-semibold py-3 h-auto"
+                variant={
+                  selectedBombTargets.length === 0 ? "outline" : "destructive"
+                }
+                size="lg"
+              >
+                {selectedBombTargets.length === 0
+                  ? "💥 Explosão sem vítimas"
+                  : `💀 Confirmar eliminação de ${
+                      selectedBombTargets.length
+                    } jogador${selectedBombTargets.length > 1 ? "es" : ""}`}
+              </Button>
+            </div>
+
+            <div className="bg-muted/30 p-4 rounded-lg border border-muted-foreground/20">
+              <p className="text-sm text-muted-foreground text-center">
+                <strong>⚠️ Lembre-se:</strong> Você pode escolher de 0 a 2
+                jogadores para serem eliminados junto com o Homem-bomba. Clique
+                nos jogadores para selecioná-los ou deselecioná-los.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -859,6 +1011,9 @@ export function GameBoard() {
               players={alivePlayers}
               votes={state.context.votes}
               tiedPlayers={state.context.tiedPlayers}
+              protectedPlayerIds={getAngelProtectedPlayers(
+                state.context.actions
+              )}
               onVote={(targetId: string, votes: number) => {
                 send({
                   type: "REGISTER_VOTE",
@@ -877,6 +1032,27 @@ export function GameBoard() {
               tiedPlayers={state.context.tiedPlayers || []}
               onRepeatVoting={() => send({ type: "REPEAT_VOTING" })}
               onContinueToNight={() => send({ type: "CONTINUE_TO_NIGHT" })}
+            />
+          )}
+
+          {/* Tie Voting - Votação entre apenas os jogadores empatados */}
+          {isTieVoting && (
+            <VotingPanel
+              players={alivePlayers}
+              votes={state.context.votes}
+              tiedPlayers={state.context.tiedPlayers}
+              protectedPlayerIds={getAngelProtectedPlayers(
+                state.context.actions
+              )}
+              onVote={(targetId: string, votes: number) => {
+                send({
+                  type: "REGISTER_VOTE",
+                  playerId: "host",
+                  targetId,
+                  votes,
+                });
+              }}
+              onEndVoting={() => send({ type: "END_VOTING" })}
             />
           )}
 
@@ -911,7 +1087,12 @@ export function GameBoard() {
                 )}
 
                 <Button
-                  onClick={() => send({ type: "RESET_GAME" })}
+                  onClick={() => {
+                    send({ type: "RESET_GAME" });
+                    // Limpar jogadores locais explicitamente quando nova partida é iniciada
+                    setPlayers([]);
+                    setHostNick("");
+                  }}
                   className="w-full"
                 >
                   Nova Partida
