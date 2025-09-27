@@ -116,10 +116,13 @@ export const gameMachine = createMachine(
       },
 
       night: {
-        entry: assign({
-          phase: () => "NIGHT" as GamePhase,
-          actions: () => [], // Limpar ações da noite anterior
-        }),
+        entry: [
+          assign({
+            phase: () => "NIGHT" as GamePhase,
+            actions: () => [], // Limpar ações da noite anterior
+          }),
+          "clearDayEffects",
+        ],
         on: {
           RECORD_ACTION: {
             actions: "recordNightAction",
@@ -149,9 +152,12 @@ export const gameMachine = createMachine(
       },
 
       day: {
-        entry: assign({
-          phase: () => "DAY" as GamePhase,
-        }),
+        entry: [
+          assign({
+            phase: () => "DAY" as GamePhase,
+          }),
+          "addDayStatusMessage",
+        ],
         on: {
           PROCESS_DICE: {
             actions: "processDiceAction",
@@ -605,6 +611,86 @@ export const gameMachine = createMachine(
           };
 
           return [...context.messages, newMessage];
+        },
+      }),
+
+      addDayStatusMessage: assign({
+        messages: ({ context }) => {
+          const alivePlayers = context.players.filter((p) => p.alive);
+          const silencedPlayers = alivePlayers.filter(
+            (p) => p.meta?.silenced === true
+          );
+          const paralyzedPlayers = alivePlayers.filter(
+            (p) => p.meta?.paralyzed === true
+          );
+
+          const newMessages: Message[] = [];
+
+          // Sempre adicionar uma mensagem indicando o início do dia
+          newMessages.push({
+            id: uuidv4(),
+            level: "ACTION_VALID",
+            text: `🌅 DIA ${context.round} INICIADO`,
+            createdAt: Date.now(),
+          });
+
+          if (silencedPlayers.length > 0) {
+            newMessages.push({
+              id: uuidv4(),
+              level: "INFO",
+              text: `⚠️ Jogadores SILENCIADOS (não podem votar): ${silencedPlayers
+                .map((p) => p.nick)
+                .join(", ")}`,
+              createdAt: Date.now(),
+            });
+          }
+
+          if (paralyzedPlayers.length > 0) {
+            newMessages.push({
+              id: uuidv4(),
+              level: "INFO",
+              text: `⚠️ Jogadores PARALISADOS (não podem votar): ${paralyzedPlayers
+                .map((p) => p.nick)
+                .join(", ")}`,
+              createdAt: Date.now(),
+            });
+          }
+
+          // Mostrar informações sobre quem pode votar
+          const affectedPlayers =
+            silencedPlayers.length + paralyzedPlayers.length;
+          if (affectedPlayers > 0) {
+            const canVote = alivePlayers.length - affectedPlayers;
+            newMessages.push({
+              id: uuidv4(),
+              level: "INFO",
+              text: `📊 RESUMO DA VOTAÇÃO: ${canVote} jogadores podem votar (${affectedPlayers} não podem votar)`,
+              createdAt: Date.now(),
+            });
+          }
+
+          return [...context.messages, ...newMessages];
+        },
+      }),
+
+      clearDayEffects: assign({
+        players: ({ context }) => {
+          return context.players.map((player) => {
+            if (player.meta) {
+              const newMeta = { ...player.meta };
+
+              // Remover efeitos que duram apenas durante o dia
+              if (player.meta.silenced) {
+                delete newMeta.silenced;
+              }
+              if (player.meta.paralyzed) {
+                delete newMeta.paralyzed;
+              }
+
+              return { ...player, meta: newMeta };
+            }
+            return player;
+          });
         },
       }),
 

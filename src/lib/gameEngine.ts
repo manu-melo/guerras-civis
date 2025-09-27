@@ -413,11 +413,31 @@ export function processNight(
     if (player.meta) {
       const newMeta = { ...player.meta };
 
-      // Limpar efeitos normais (não reflexivos)
-      if (player.meta.silenced && !player.meta.silencedByReflection) {
+      // PRIMEIRO: Processar efeitos de reflexão e convertê-los em efeitos permanentes para o dia
+      if (player.meta.silencedByReflection) {
+        delete newMeta.silencedByReflection;
+        // silenced permanece true para o DIA (para impedir votação)
+        newMeta.silenced = true;
+      }
+      if (player.meta.paralyzedByReflection) {
+        delete newMeta.paralyzedByReflection;
+        // paralyzed permanece true para o DIA (para impedir votação)
+        newMeta.paralyzed = true;
+      }
+
+      // DEPOIS: Limpar efeitos normais (não reflexivos) que já eram de rodadas anteriores
+      if (
+        player.meta.silenced &&
+        !player.meta.silencedByReflection &&
+        !newMeta.silenced
+      ) {
         delete newMeta.silenced;
       }
-      if (player.meta.paralyzed && !player.meta.paralyzedByReflection) {
+      if (
+        player.meta.paralyzed &&
+        !player.meta.paralyzedByReflection &&
+        !newMeta.paralyzed
+      ) {
         delete newMeta.paralyzed;
       }
       if (player.meta.imprisoned && !player.meta.imprisonedByReflection) {
@@ -425,16 +445,6 @@ export function processNight(
       }
       if (player.meta.protected && !player.meta.protectedByReflection) {
         delete newMeta.protected;
-      }
-
-      // PRESERVAR marcadores de reflexão para próxima noite, mas limpar flags de reflexão
-      if (player.meta.silencedByReflection) {
-        delete newMeta.silencedByReflection;
-        // silenced permanece true para a próxima noite
-      }
-      if (player.meta.paralyzedByReflection) {
-        delete newMeta.paralyzedByReflection;
-        // paralyzed permanece true para a próxima noite
       }
       if (player.meta.imprisonedByReflection) {
         delete newMeta.imprisonedByReflection;
@@ -529,7 +539,7 @@ function processAction(
         break;
       case "SILENCIAR":
         updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id
+          p.id === target.id
             ? {
                 ...p,
                 meta: { ...p.meta, silenced: true, silencedByReflection: true },
@@ -539,7 +549,7 @@ function processAction(
         break;
       case "PARALISAR":
         updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id
+          p.id === target.id
             ? {
                 ...p,
                 meta: {
