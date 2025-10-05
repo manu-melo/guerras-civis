@@ -207,87 +207,33 @@ export function validateAction(
     }
   }
 
-  // 🚫 VALIDAÇÃO CRÍTICA DO JUIZ - BLOQUEIO TOTAL APÓS 1ª EXECUÇÃO
+  // ⚖️ NOVA LÓGICA DO JUIZ - SISTEMA DE PONTOS
   if (actor.role === "Juiz" && action.type === "EXECUTAR") {
-    // Buscar TODAS as execuções deste Juiz (incluindo processadas e não processadas)
-    const allJuizExecutions = existingActions.filter(
+    const currentPoints = (actor.meta?.judgePoints as number) || 0;
+
+    // Verificar se já executou nesta noite (só pode executar 1 vez por noite independente dos pontos)
+    const judgeAlreadyActed = existingActions.some(
       (a) => a.actorId === actor.id && a.type === "EXECUTAR"
     );
 
-    // LIMITE ABSOLUTO: Se já executou uma vez, aplicar regras rigorosas
-    if (allJuizExecutions.length >= 1) {
-      // Buscar apenas execuções VÁLIDAS para análise das condições
-      const validExecutions = allJuizExecutions.filter(
-        (a) => a.status === "VALID"
-      );
-
-      if (validExecutions.length >= 1) {
-        const firstExecution = validExecutions[0];
-        const firstTargetRole = firstExecution.targetRole;
-
-        // VERIFICAR CONDIÇÕES PARA SEGUNDA EXECUÇÃO
-        let canExecuteSecondTime = false;
-        let blockReason = "";
-
-        // CONDIÇÃO 1: Primeira execução matou Assassino/Aprendiz da MÁFIA ORIGINAL
-        if (firstTargetRole === "Assassino" || firstTargetRole === "Aprendiz") {
-          const firstTarget = players.find(
-            (p) => p.id === firstExecution.targetId
-          );
-          if (
-            firstTarget &&
-            firstTarget.team === "MAFIA" &&
-            firstTarget.originalRole !== "Coringa"
-          ) {
-            canExecuteSecondTime = true;
-            blockReason = `✅ Segunda execução permitida: matou ${firstTargetRole} da Máfia`;
-          } else {
-            blockReason = `❌ ${firstTargetRole} não era da Máfia original`;
-          }
-        } else {
-          blockReason = `❌ Primeira execução foi ${firstTargetRole} (não Assassino/Aprendiz)`;
-        }
-
-        // CONDIÇÃO 2: Direito por morte do Policial (apenas se condição 1 falhou)
-        if (!canExecuteSecondTime) {
-          const policemanDead = players.some(
-            (p) =>
-              p.role === "Policial" &&
-              !p.alive &&
-              p.team === "CIVIL" &&
-              p.originalRole !== "Coringa"
-          );
-
-          if (policemanDead && !actor.meta?.usedPoliceExecutionRight) {
-            canExecuteSecondTime = true;
-            blockReason = "✅ Segunda execução permitida: Policial morreu";
-            // Marcar uso do direito
-            actor.meta = { ...actor.meta, usedPoliceExecutionRight: true };
-          } else if (!policemanDead) {
-            blockReason += " | Policial ainda vivo";
-          } else {
-            blockReason += " | Direito por morte do Policial já usado";
-          }
-        }
-
-        // BLOQUEAR se não atende nenhuma condição
-        if (!canExecuteSecondTime) {
-          return {
-            valid: false,
-            reason: `🚫 EXECUÇÃO BLOQUEADA: Juiz já executou ${validExecutions.length}x. ${blockReason}. Para executar novamente: (1) Primeira execução deve ser Assassino/Aprendiz da MÁFIA original, OU (2) Policial Civil morreu (direito único)`,
-          };
-        }
-      }
-
-      // Se já executou 2 vezes válidas, bloquear qualquer tentativa adicional
-      if (validExecutions.length >= 2) {
-        return {
-          valid: false,
-          reason:
-            "🚫 LIMITE ATINGIDO: Juiz já executou 2 vezes - máximo absoluto",
-        };
-      }
+    if (judgeAlreadyActed) {
+      return {
+        valid: false,
+        reason: "🚫 Juiz já executou nesta noite",
+      };
     }
+
+    // Verificar se tem pontos suficientes para executar
+    if (currentPoints <= 0) {
+      return {
+        valid: false,
+        reason:
+          "🚫 Juiz não possui pontos suficientes para executar (precisa atender condições para ganhar pontos)",
+      };
+    }
+
+    // Tem pontos suficientes - ação será executada (ponto será consumido no processamento)
+    return { valid: true };
   }
 
   // Verificar regra de múltiplas ações (exceções podem agir independentemente)
@@ -691,38 +637,94 @@ function processAction(
       break;
 
     case "EXECUTAR":
-      // Juiz executa alguém (ação especial)
+      // ⚖️ NOVA LÓGICA DO JUIZ - SISTEMA DE PONTOS
       updatedPlayers = eliminatePlayer(
         updatedPlayers,
         target.id,
         "Execução pelo Juiz"
       );
 
-      // Se o Juiz estava usando o direito de execução pós-morte do policial, marcar como usado
-      const policemanDied = players.some(
-        (p) => p.role === "Policial" && !p.alive
-      );
-      const previousExecutions = processedActions.filter(
-        (a) =>
-          a.actorId === actor.id &&
-          a.type === "EXECUTAR" &&
-          a.status === "VALID"
-      );
+      // ⚖️ NOTA: Marcar que executou e CONSUMIR 1 PONTO DO JUIZ POR EXECUÇÃO
+      updatedPlayers = updatedPlayers.map((p) => {
+        if (p.id === actor.id && p.role === "Juiz") {
+          const currentPoints = (p.meta?.judgePoints as number) || 0;
+          return {
+            ...p,
+            meta: {
+              ...p.meta,
+              judgePoints: Math.max(0, currentPoints - 1),
+              hasExecutedSomeone: true, // Marcar que já executou alguém
+            },
+          };
+        }
+        return p;
+      });
 
+      // 2. VERIFICAR CONDIÇÕES PARA GANHAR +1 PONTO
+      // CONDIÇÃO 1: Executou Assassino ou Aprendiz da MÁFIA ORIGINAL (não Coringa)
       if (
-        policemanDied &&
-        previousExecutions.length > 0 &&
-        !actor.meta?.usedPoliceExecutionRight
+        (target.role === "Assassino" || target.role === "Aprendiz") &&
+        target.team === "MAFIA" &&
+        target.originalRole !== "Coringa"
       ) {
-        // Marcar que o Juiz usou o direito de execução pós-morte do policial
-        updatedPlayers = updatedPlayers.map((p) =>
-          p.id === actor.id
-            ? { ...p, meta: { ...p.meta, usedPoliceExecutionRight: true } }
-            : p
-        );
+        const pointReason = `Executou ${target.role} da Máfia original`;
+
+        updatedPlayers = updatedPlayers.map((p) => {
+          if (p.id === actor.id && p.role === "Juiz") {
+            const currentPoints = (p.meta?.judgePoints as number) || 0;
+            return {
+              ...p,
+              meta: {
+                ...p.meta,
+                judgePoints: currentPoints + 1,
+              },
+            };
+          }
+          return p;
+        });
+
+        // Gerar mensagem de ganho de ponto
+        const timestamp = new Date().toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
+
+        const judgeAfterGain = updatedPlayers.find((p) => p.id === actor.id);
+        const finalPoints = (judgeAfterGain?.meta?.judgePoints as number) || 0;
+
+        messages.push({
+          id: uuidv4(),
+          createdAt: Date.now(),
+          level: "INFO",
+          text: `[${timestamp}] ⚖️ JUIZ GANHOU +1 PONTO — ${pointReason}. Pontos atuais: ${finalPoints}`,
+        });
       }
 
       messages.push(createActionMessage(action, "ACTION_VALID", players));
+
+      // Mostrar pontos restantes do Juiz
+      const judgeAfterExecution = updatedPlayers.find((p) => p.id === actor.id);
+      const remainingPoints =
+        (judgeAfterExecution?.meta?.judgePoints as number) || 0;
+
+      const timestamp = new Date().toLocaleTimeString("pt-BR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+
+      messages.push({
+        id: uuidv4(),
+        createdAt: Date.now(),
+        level: "INFO",
+        text: `[${timestamp}] ⚖️ JUIZ CONSUMIU 1 PONTO — Pontos restantes: ${remainingPoints}${
+          remainingPoints === 0
+            ? " (Precisa atender condições para executar novamente)"
+            : ""
+        }`,
+      });
+
+      // A lógica de ganhar pontos foi movida para o recordNightAction também
+
       break;
 
     case "PRENDER":
@@ -903,6 +905,57 @@ export function processSpecialElimination(
             text: `${apprentice.nick} (Aprendiz) herdou o poder de assassinato após a morte do Assassino da Máfia`,
           });
         }
+      }
+      break;
+
+    case "Policial":
+      // ⚖️ CONDIÇÃO 2 DO JUIZ: Se Policial morrer e Juiz tiver executado antes, Juiz ganha +1 ponto
+      if (
+        eliminatedPlayer.team === "CIVIL" &&
+        eliminatedPlayer.originalRole !== "Coringa"
+      ) {
+        // Verificar se há um Juiz vivo que já executou alguém antes
+        updatedPlayers.forEach((judge) => {
+          if (
+            judge.role === "Juiz" &&
+            judge.alive &&
+            judge.meta?.judgeExecutedBeforePolicemanDeath !== true
+          ) {
+            // Verificar se este Juiz já executou antes (tem menos pontos do que o inicial)
+            const currentPoints = (judge.meta?.judgePoints as number) || 0;
+            const hasExecutedBefore =
+              currentPoints < 1 || judge.meta?.hasExecutedSomeone === true;
+
+            if (hasExecutedBefore) {
+              // Dar +1 ponto ao Juiz por morte do Policial
+              updatedPlayers = updatedPlayers.map((p) => {
+                if (p.id === judge.id) {
+                  return {
+                    ...p,
+                    meta: {
+                      ...p.meta,
+                      judgePoints: currentPoints + 1,
+                      judgeExecutedBeforePolicemanDeath: true, // Marcar como processado
+                    },
+                  };
+                }
+                return p;
+              });
+
+              const timestamp = new Date().toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              messages.push({
+                id: uuidv4(),
+                createdAt: Date.now(),
+                level: "INFO",
+                text: `[${timestamp}] ⚖️ JUIZ GANHOU +1 PONTO — Policial Civil morreu e Juiz já havia executado antes. Pode executar novamente!`,
+              });
+            }
+          }
+        });
       }
       break;
   }

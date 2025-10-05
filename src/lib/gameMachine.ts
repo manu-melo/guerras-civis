@@ -16,6 +16,7 @@ import {
   processVotingResult,
   checkWinConditions,
   checkForBombExplosion,
+  validateAction,
 } from "@/lib/gameEngine";
 import { v4 as uuidv4 } from "uuid";
 
@@ -341,7 +342,21 @@ export const gameMachine = createMachine(
       assignRolesToPlayers: assign({
         players: ({ context }) => {
           try {
-            return assignRoles(context.players);
+            const playersWithRoles = assignRoles(context.players);
+
+            // ⚖️ INICIALIZAR PONTOS DO JUIZ (1 ponto inicial)
+            return playersWithRoles.map((player) => {
+              if (player.role === "Juiz") {
+                return {
+                  ...player,
+                  meta: {
+                    ...player.meta,
+                    judgePoints: 1, // Juiz começa com 1 ponto
+                  },
+                };
+              }
+              return player;
+            });
           } catch (error) {
             console.error("Erro ao distribuir cargos:", error);
             return context.players;
@@ -375,7 +390,28 @@ export const gameMachine = createMachine(
         players: ({ context, event }) => {
           if (event.type !== "SET_JOKER_DICE") return context.players;
           try {
-            return processJokerDice(context.players, event.value);
+            const playersAfterDice = processJokerDice(
+              context.players,
+              event.value
+            );
+
+            // ⚖️ INICIALIZAR PONTOS DO JUIZ se Coringa virou Juiz
+            return playersAfterDice.map((player) => {
+              if (
+                player.role === "Juiz" &&
+                player.originalRole === "Coringa" &&
+                player.meta?.judgePoints === undefined
+              ) {
+                return {
+                  ...player,
+                  meta: {
+                    ...player.meta,
+                    judgePoints: 1, // Coringa que virou Juiz também começa com 1 ponto
+                  },
+                };
+              }
+              return player;
+            });
           } catch (error) {
             console.error("Erro ao processar dado do Coringa:", error);
             return context.players;
@@ -436,6 +472,18 @@ export const gameMachine = createMachine(
         actions: ({ context, event }) => {
           if (event.type !== "RECORD_ACTION") return context.actions;
 
+          // ⚖️ VALIDAÇÃO CRÍTICA: Verificar se a ação é válida antes de registrar
+          const validation = validateAction(
+            event.action,
+            context.players,
+            context.actions
+          );
+
+          // Se a ação for inválida, não registrar
+          if (!validation.valid) {
+            return context.actions;
+          }
+
           const newAction: Action = {
             id: uuidv4(),
             actorId: event.action.actorId!,
@@ -453,6 +501,30 @@ export const gameMachine = createMachine(
         },
         messages: ({ context, event }) => {
           if (event.type !== "RECORD_ACTION") return context.messages;
+
+          // ⚖️ VALIDAÇÃO CRÍTICA: Verificar se a ação é válida para mensagens
+          const validation = validateAction(
+            event.action,
+            context.players,
+            context.actions
+          );
+
+          // Se a ação for inválida, adicionar mensagem de erro
+          if (!validation.valid) {
+            const timestamp = new Date().toLocaleTimeString("pt-BR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+
+            const rejectionMessage: Message = {
+              id: `rejection-${Date.now()}`,
+              createdAt: Date.now(),
+              level: "ELIMINATION",
+              text: `[${timestamp}] ❌ AÇÃO REJEITADA — ${validation.reason}`,
+            };
+
+            return [...context.messages, rejectionMessage];
+          }
 
           // Encontrar informações dos jogadores
           const actor = context.players.find(
