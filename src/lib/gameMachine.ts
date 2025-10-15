@@ -17,6 +17,7 @@ import {
   checkWinConditions,
   checkForBombExplosion,
   validateAction,
+  getAngelProtectedPlayers,
 } from "@/lib/gameEngine";
 import { v4 as uuidv4 } from "uuid";
 
@@ -170,12 +171,52 @@ export const gameMachine = createMachine(
       },
 
       voting: {
-        entry: assign({
-          phase: () => "VOTING" as GamePhase,
-          isVotingActive: () => true,
-          votes: () => ({}),
-          tiedPlayers: () => [], // Limpar jogadores empatados ao iniciar nova votação
-        }),
+        entry: [
+          assign({
+            phase: () => "VOTING" as GamePhase,
+            isVotingActive: () => true,
+            votes: () => ({}),
+            tiedPlayers: () => [], // Limpar jogadores empatados ao iniciar nova votação
+          }),
+          assign({
+            messages: ({ context }) => {
+              // ⚖️ AVISO: Verificar se há jogadores protegidos pelo Anjo
+              const protectedPlayerIds = getAngelProtectedPlayers(
+                context.actions
+              );
+
+              if (protectedPlayerIds.length === 0) {
+                return context.messages; // Nenhum jogador protegido
+              }
+
+              // Criar mensagens para cada jogador protegido
+              const timestamp = new Date().toLocaleTimeString("pt-BR", {
+                hour: "2-digit",
+                minute: "2-digit",
+              });
+
+              const protectionMessages = protectedPlayerIds.map(
+                (playerId: string) => {
+                  const protectedPlayer = context.players.find(
+                    (p) => p.id === playerId
+                  );
+                  const playerName = protectedPlayer
+                    ? protectedPlayer.nick
+                    : `Jogador ${playerId}`;
+
+                  return {
+                    id: `angel-protection-${playerId}-${Date.now()}`,
+                    createdAt: Date.now(),
+                    level: "INFO" as const,
+                    text: `[${timestamp}] 😇 ATENÇÃO: ${playerName} está protegido pelo Anjo e não pode ser votado`,
+                  };
+                }
+              );
+
+              return [...context.messages, ...protectionMessages];
+            },
+          }),
+        ],
         on: {
           REGISTER_VOTE: {
             actions: "registerVote",
